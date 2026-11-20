@@ -8,7 +8,6 @@ import ForgotPasswordPage from './pages/auth/ForgotPasswordPage'
 import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import OnboardingPage from './pages/auth/OnboardingPage'
 import DashboardPage from './pages/app/DashboardPage'
-import ComingSoonPage from './pages/app/ComingSoonPage'
 import CompanySettingsPage from './pages/app/settings/CompanySettingsPage'
 import CatalogPage from './pages/app/CatalogPage'
 import ClientsPage from './pages/app/ClientsPage'
@@ -23,12 +22,9 @@ import BillingPage from './pages/app/BillingPage'
 import AdminPage from './pages/app/AdminPage'
 import RemindersPage from './pages/app/RemindersPage'
 import PaymentsPage from './pages/app/PaymentsPage'
+import AppointmentsPage from './pages/app/AppointmentsPage'
 import PricingPage from './pages/public/PricingPage'
 import { isSupabaseConfigured } from './lib/supabase'
-
-const UPCOMING: Array<[string, string, string]> = [
-  ['/rendez-vous', 'Rendez-vous', 'Fonctionnalités avancées'],
-]
 
 export default function App() {
   if (!isSupabaseConfigured) {
@@ -80,9 +76,7 @@ export default function App() {
               <Route path="/abonnement" element={<BillingPage />} />
               <Route path="/relances" element={<RemindersPage />} />
               <Route path="/paiements" element={<PaymentsPage />} />
-              {UPCOMING.map(([path, title, step]) => (
-                <Route key={path} path={path} element={<ComingSoonPage title={title} step={step} />} />
-              ))}
+              <Route path="/rendez-vous" element={<AppointmentsPage />} />
               <Route element={<RequirePlatformAdmin />}>
                 <Route path="/admin" element={<AdminPage />} />
               </Route>

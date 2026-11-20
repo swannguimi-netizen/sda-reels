@@ -17,7 +17,8 @@ SaaS multi-tenant pour TPE/PME, artisans et freelances : devis et factures confo
 | 7 | Tableau de bord et admin | ✅ |
 | 8 | Relances automatiques | ✅ (planification pg_cron à activer) |
 | 9 | Acompte payé en ligne (Stripe Connect) | ✅ (Connect à activer dans Stripe) |
-| + | Rendez-vous, avis Google, mobile Expo | ⏳ (tables prêtes) |
+| 10 | Prise de rendez-vous + Google Agenda | ✅ (client OAuth Google à créer) |
+| + | Avis Google, mobile Expo | ⏳ (tables prêtes) |
 
 ## Démarrage
 
@@ -66,6 +67,17 @@ supabase functions deploy deposit-checkout --no-verify-jwt
 supabase secrets set STRIPE_CONNECT_WEBHOOK_SECRET=whsec_xxx
 ```
 
+Rendez-vous et Google Agenda : créer un client OAuth « Application Web » dans Google Cloud
+(API Google Calendar activée ; URI de redirection : `https://<projet>.supabase.co/functions/v1/google-calendar`), puis
+
+```bash
+supabase secrets set GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=xxx GOOGLE_STATE_SECRET=$(openssl rand -hex 24)
+supabase functions deploy google-calendar --no-verify-jwt
+```
+
+Les portées Agenda sont « sensibles » : l'écran de consentement Google doit être validé par Google avant l'ouverture au public
+(jusqu'à 100 utilisateurs de test en attendant).
+
 Relances automatiques : déployer la fonction puis planifier l'appel horaire.
 
 ```bash
@@ -94,6 +106,7 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 | `…09_admin.sql` | vue super-admin enrichie, statistiques plateforme, prolongation d'essai |
 | `…10_reminders.sql` | réglages et calcul des relances dues, fuseau horaire, pause par document |
 | `…11_online_deposit.sql` | compte Stripe Connect de l'entreprise, facture d'acompte, déduction sur la facture finale |
+| `…12_appointments.sql` | rendez-vous sans chevauchement, réglages, jetons Google (serveur uniquement) |
 | `…04_dashboard_admin_storage.sql` | `dashboard_stats()`, `current_usage()`, vues super-admin, buckets `logos` / `documents` |
 
 ### Principes de sécurité
@@ -169,9 +182,17 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 - À l'encaissement, le webhook crée la **facture d'acompte** (obligatoire en France) : numérotée, payée, TVA **au prorata de chaque taux** du devis, titre « FACTURE D'ACOMPTE » ; la facture finale déduit l'acompte et le référence. Rejeu du webhook sans doublon ; contrôle que le compte Stripe encaisseur est bien celui de l'entreprise du devis.
 - Notification email à l'entreprise à chaque acompte reçu.
 
+## Prise de rendez-vous (offre Premium)
+
+- **Assistant** : outils `find_slots` (jour, matin/après-midi) et `book_appointment` ; il reçoit la date et l'heure locales (bloc système non mis en cache) pour comprendre « demain matin » ; il ne peut réserver qu'un créneau renvoyé par `find_slots`, revérifié au moment de réserver ; le dirigeant est prévenu par email.
+- **Créneaux** (`_shared/slots.ts`, testé) : plages d'ouverture par jour, durée, délai de prévenance, horizon, fuseau de l'entreprise (heure d'été comprise), moins les rendez-vous existants et les **occupations Google Agenda** (freeBusy).
+- **Jamais de double réservation** : contrainte d'exclusion PostgreSQL (`tstzrange` + `btree_gist`), même en cas de réservations simultanées.
+- **Google Agenda** : OAuth hors ligne (état signé HMAC), jetons dans le schéma `private`, chaque rendez-vous créé (assistant ou manuel) ajouté à l'agenda, retiré en cas d'annulation ; erreurs de synchronisation visibles.
+- Page `/rendez-vous` : planning (heures dans le fuseau de l'entreprise), création à partir des créneaux libres, disponibilités, connexion Google, activation pour l'assistant.
+
 ### Tests
 
-147 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
+155 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
 
 ```bash
 npm run test:db     # PGHOST / PGPORT / PGUSER configurables

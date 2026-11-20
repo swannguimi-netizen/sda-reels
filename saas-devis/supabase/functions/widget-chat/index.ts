@@ -6,6 +6,8 @@ import { corsHeaders, json } from '../_shared/cors.ts'
 import { adminClient, SUPABASE_URL } from '../_shared/supabase.ts'
 import { Anthropic, CLAUDE_MODEL, claude } from '../_shared/claude.ts'
 import { emailLayout, sendEmail } from '../_shared/email.ts'
+import { book, availableSlots, loadContext } from '../_shared/appointments.ts'
+import { localParts, nowLabel, slotLabel, zonedToUtc } from '../_shared/slots.ts'
 import {
   type AssistantSettings, assistantTools, buildSystemPrompt, isOriginAllowed, isValidEmail, type KnowledgeEntry,
   normalizePhone, type StoredMessage, suggestions, toHistory,
@@ -149,8 +151,14 @@ async function handleMessage(
     admin.from('messages').select('role, content').eq('conversation_id', conv.id).order('created_at', { ascending: false }).limit(30),
   ])
 
-  const system = buildSystemPrompt(company as never, settings, (kb ?? []) as KnowledgeEntry[])
-  const tools = assistantTools(settings)
+  const { data: hasAppointments } = settings.can_book_appointments
+    ? await admin.rpc('company_has_feature', { p_company_id: companyId, p_feature: 'appointments' })
+    : { data: false }
+  const appointments = !!hasAppointments
+  const ctx = await loadContext(admin, companyId)
+  const system = buildSystemPrompt(company as never, settings, (kb ?? []) as KnowledgeEntry[], { appointments })
+  const tools = assistantTools(settings, { appointments })
+  const today = `Nous sommes le ${nowLabel(new Date(), ctx.timeZone)} (heure locale de l’entreprise).`
   const messages = toHistory(((history ?? []) as StoredMessage[]).reverse())
   let usage = { input: 0, output: 0 }
 
@@ -163,7 +171,8 @@ async function handleMessage(
         fallbacks: 'default',
         output_config: { effort: 'low' }, // conversation : réponses rapides
         // Prompt système stable par entreprise : mis en cache
-        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+        // Bloc stable mis en cache, puis la date du jour (variable) après le point de cache
+        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }, { type: 'text', text: today }],
         tools,
         messages,
       })
@@ -252,6 +261,46 @@ async function runTool(
     await notify(admin, company, settings, conv, 'Un visiteur souhaite échanger avec vous',
       `${conv.contact_name ?? 'Un visiteur'} a besoin d’une réponse de votre part dans l’assistant de votre site.\n\nMotif : ${str(input.reason, 500) ?? '—'}`)
     return { content: 'L’équipe est prévenue et répondra dans cette conversation.' }
+  }
+
+  if (name === 'find_slots') {
+    const { timeZone } = await loadContext(admin, companyId)
+    let from: Date | undefined
+    let to: Date | undefined
+    if (typeof input.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.day)) {
+      const [y, m, d] = input.day.split('-').map(Number)
+      from = zonedToUtc(y, m, d, 0, 0, timeZone)
+      to = zonedToUtc(y, m, d + 1, 0, 0, timeZone)
+    }
+    const { slots } = await availableSlots(admin, companyId, { from, to, max: 80 })
+    const period = input.period
+    const filtered = slots.filter((sl) => {
+      const h = localParts(sl.start, timeZone).hour
+      return period === 'matin' ? h < 12 : period === 'apres-midi' ? h >= 12 : true
+    }).slice(0, 6)
+    if (!filtered.length) return { content: 'Aucun créneau libre pour cette demande. Propose un autre jour, ou les prochains créneaux disponibles (day = null).' }
+    return { content: JSON.stringify(filtered.map((sl) => ({ start: sl.start.toISOString(), libelle: slotLabel(sl.start, timeZone) }))) }
+  }
+
+  if (name === 'book_appointment') {
+    if (!conv.contact_name || (!conv.contact_email && !conv.contact_phone)) {
+      return { content: 'Il manque le nom et un téléphone ou un email : demande-les puis enregistre-les avec save_contact avant de réserver.', isError: true }
+    }
+    const start = new Date(String(input.start))
+    if (Number.isNaN(start.getTime())) return { content: 'Créneau invalide : utilise le champ start renvoyé par find_slots.', isError: true }
+    const reason = str(input.reason, 200) ?? 'Rendez-vous'
+    const leadId = await upsertLead(admin, companyId, conv, { need: reason }, pageUrl)
+    const r = await book(admin, companyId, {
+      start, title: reason, description: `Pris via l’assistant du site.`, contactName: conv.contact_name as string,
+      contactEmail: (conv.contact_email as string | null) ?? null, contactPhone: (conv.contact_phone as string | null) ?? null,
+      conversationId: conv.id as string, leadId, source: 'assistant',
+    })
+    if (!r.ok) return { content: `${r.reason} Rappelle find_slots et propose d’autres créneaux.`, isError: true }
+    const { timeZone } = await loadContext(admin, companyId)
+    const label = slotLabel(r.start, timeZone)
+    await notify(admin, company, settings, conv, `Nouveau rendez-vous : ${label}`,
+      `${conv.contact_name} a pris rendez-vous via l’assistant de votre site.\n\nQuand : ${label}\nObjet : ${reason}\nContact : ${[conv.contact_phone, conv.contact_email].filter(Boolean).join(' · ')}`)
+    return { content: `Rendez-vous confirmé le ${label}. Confirme-le au visiteur en reprenant la date et l’heure.` }
   }
 
   return { content: `Outil inconnu : ${name}`, isError: true }

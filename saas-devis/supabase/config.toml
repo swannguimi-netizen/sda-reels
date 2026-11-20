@@ -26,3 +26,7 @@ verify_jwt = true
 # Page publique du devis (jeton) : pas de session
 [functions.deposit-checkout]
 verify_jwt = false
+
+# Retour OAuth de Google (GET) : JWT vérifié dans la fonction pour les actions POST
+[functions.google-calendar]
+verify_jwt = false

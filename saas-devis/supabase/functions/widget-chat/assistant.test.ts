@@ -58,3 +58,11 @@ Deno.test('suggestions et téléphone', () => {
   assertEquals(normalizePhone('+594 694 12 34 56'), '+594694123456')
   assertEquals(normalizePhone('12'), null)
 })
+
+Deno.test('rendez-vous : outils et consignes seulement si activés', () => {
+  assertEquals(assistantTools(settings, { appointments: true }).map((t) => t.name),
+    ['save_contact', 'create_quote_request', 'request_human', 'find_slots', 'book_appointment'])
+  assert(!assistantTools(settings).some((t) => t.name === 'book_appointment'))
+  assert(buildSystemPrompt(company, settings, [], { appointments: true }).includes('find_slots'))
+  assert(!buildSystemPrompt(company, settings, []).includes('find_slots'))
+})

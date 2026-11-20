@@ -27,7 +27,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 }
 
 /** Prompt système : stable pour une entreprise donnée (mis en cache côté API). */
-export function buildSystemPrompt(company: CompanyInfo, settings: AssistantSettings, kb: KnowledgeEntry[]): string {
+export function buildSystemPrompt(company: CompanyInfo, settings: AssistantSettings, kb: KnowledgeEntry[], opts: { appointments?: boolean } = {}): string {
   const grouped = new Map<string, KnowledgeEntry[]>()
   for (const e of kb) grouped.set(e.category, [...(grouped.get(e.category) ?? []), e])
   const knowledge = [...grouped.entries()]
@@ -45,7 +45,8 @@ export function buildSystemPrompt(company: CompanyInfo, settings: AssistantSetti
 - N’invente jamais de prix, de délai, de disponibilité ou de garantie. Un prix ne peut être donné que s’il figure dans les informations, en précisant qu’un devis personnalisé le confirmera.
 ${settings.collect_contact ? '- Quand le visiteur a un projet ou une demande précise, propose naturellement de laisser son nom et un email ou un téléphone, et enregistre-les avec l’outil save_contact dès qu’il les donne. Ne redemande pas une information déjà donnée.' : '- Ne demande pas de coordonnées sauf si le visiteur souhaite être recontacté.'}
 ${settings.can_create_quote_requests ? '- Si le visiteur veut un devis : fais-lui préciser le besoin (nature des travaux ou de la prestation, quantités ou surfaces, lieu, délai souhaité) en deux ou trois questions au plus, obtiens au moins un email ou un téléphone, puis appelle create_quote_request. Confirme ensuite que l’équipe revient vers lui rapidement.' : '- Pour une demande de devis, invite le visiteur à contacter directement l’entreprise.'}
-- Si le visiteur demande à parler à une personne, est mécontent, ou si sa demande sort de ton rôle (réclamation, litige, urgence), appelle request_human puis indique qu’un membre de l’équipe va lui répondre ici même.
+${opts.appointments ? `- Rendez-vous : si le visiteur souhaite un rendez-vous (visite, diagnostic, devis sur place…), demande-lui le jour ou la période qui l'arrange, appelle find_slots, puis propose au plus 3 créneaux en toutes lettres. Une fois son choix fait, et avec son nom et un téléphone ou un email, appelle book_appointment avec le champ start exact du créneau choisi. Ne confirme un rendez-vous qu'après la réponse de book_appointment. Ne propose jamais un créneau qui ne vient pas de find_slots.
+` : ''}- Si le visiteur demande à parler à une personne, est mécontent, ou si sa demande sort de ton rôle (réclamation, litige, urgence), appelle request_human puis indique qu’un membre de l’équipe va lui répondre ici même.
 
 # Style
 - Ton ${settings.tone}. Vouvoiement. Réponds dans la langue du visiteur.
@@ -64,7 +65,7 @@ ${knowledge || 'Aucune information détaillée n’a encore été renseignée : 
 }
 
 /** Outils exposés au modèle (schémas stricts). */
-export function assistantTools(settings: AssistantSettings): Anthropic.Beta.Messages.BetaTool[] {
+export function assistantTools(settings: AssistantSettings, opts: { appointments?: boolean } = {}): Anthropic.Beta.Messages.BetaTool[] {
   const nullableString = (description: string) => ({ anyOf: [{ type: 'string' }, { type: 'null' }], description })
   const tools: Anthropic.Beta.Messages.BetaTool[] = [
     {
@@ -100,6 +101,34 @@ export function assistantTools(settings: AssistantSettings): Anthropic.Beta.Mess
         },
       },
     })
+  }
+  if (opts.appointments) {
+    tools.push(
+      {
+        name: 'find_slots',
+        description: 'Cherche les créneaux de rendez-vous libres, éventuellement pour un jour et une période donnés (dates dans le fuseau de l’entreprise).',
+        strict: true,
+        input_schema: {
+          type: 'object', additionalProperties: false, required: ['day', 'period'],
+          properties: {
+            day: { anyOf: [{ type: 'string', format: 'date' }, { type: 'null' }], description: 'Jour souhaité AAAA-MM-JJ, ou null pour les prochains créneaux' },
+            period: { type: 'string', enum: ['matin', 'apres-midi', 'indifferent'] },
+          },
+        },
+      },
+      {
+        name: 'book_appointment',
+        description: 'Réserve le créneau choisi par le visiteur (après avoir enregistré son nom et un téléphone ou un email avec save_contact).',
+        strict: true,
+        input_schema: {
+          type: 'object', additionalProperties: false, required: ['start', 'reason'],
+          properties: {
+            start: { type: 'string', description: 'Champ start exact d’un créneau renvoyé par find_slots' },
+            reason: { type: 'string', description: 'Objet du rendez-vous en quelques mots (ex. « Diagnostic fuite chauffe-eau »)' },
+          },
+        },
+      },
+    )
   }
   return tools
 }

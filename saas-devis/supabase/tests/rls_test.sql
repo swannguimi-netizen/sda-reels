@@ -570,3 +570,32 @@ select pg_temp.ok((select total_ttc = 5310 and amount_paid = 1593 and notes like
                    where id = current_setting('test.final_inv')::uuid), 'facture finale : acompte déduit et référencé');
 select pg_temp.fails($$select public.create_deposit_invoice((select id from public.quotes where title = 'Cuisine'), 1, 'x')$$, 'facture d''acompte réservée au serveur');
 select pg_temp.logout();
+
+-- ---------------------------------------------------------------------
+\echo '19. Rendez-vous'
+select pg_temp.login('alice@exemple.fr');
+insert into public.appointments (company_id, title, starts_at, ends_at)
+values (current_setting('test.alice_company')::uuid, 'Diagnostic', date_trunc('hour', now()) + interval '2 days', date_trunc('hour', now()) + interval '2 days 1 hour');
+select pg_temp.fails($$insert into public.appointments (company_id, title, starts_at, ends_at)
+  values (current_setting('test.alice_company')::uuid, 'Doublon', date_trunc('hour', now()) + interval '2 days 30 minutes', date_trunc('hour', now()) + interval '2 days 90 minutes')$$,
+  'deux rendez-vous ne peuvent pas se chevaucher');
+insert into public.appointments (company_id, title, starts_at, ends_at)
+values (current_setting('test.alice_company')::uuid, 'Juste après', date_trunc('hour', now()) + interval '2 days 1 hour', date_trunc('hour', now()) + interval '2 days 2 hours');
+select pg_temp.ok((select count(*) = 2 from public.appointments), 'rendez-vous bout à bout acceptés');
+update public.appointments set status = 'cancelled' where title = 'Diagnostic';
+insert into public.appointments (company_id, title, starts_at, ends_at)
+values (current_setting('test.alice_company')::uuid, 'Remplaçant', date_trunc('hour', now()) + interval '2 days', date_trunc('hour', now()) + interval '2 days 1 hour');
+select pg_temp.ok((select count(*) = 1 from public.appointments where title = 'Remplaçant'), 'créneau d''un rendez-vous annulé réutilisable');
+select pg_temp.fails($$insert into public.availability_rules (company_id, weekday, start_time, end_time) values (current_setting('test.alice_company')::uuid, 1, '11:00', '13:00')$$,
+  'plages horaires qui se chevauchent refusées');
+select pg_temp.fails($$insert into public.calendar_integrations (company_id, account_email) values (current_setting('test.alice_company')::uuid, 'pirate@gmail.com')$$,
+  'connexion Google non falsifiable');
+select pg_temp.fails($$select * from public.google_token_get(current_setting('test.alice_company')::uuid)$$, 'jetons Google inaccessibles depuis l''app');
+select pg_temp.logout();
+select pg_temp.login('bob@exemple.gf');
+select pg_temp.ok((select count(*) = 0 from public.appointments), 'Bob ne voit pas les rendez-vous d''Alice');
+select pg_temp.logout();
+do $$ begin perform public.google_token_set(current_setting('test.alice_company')::uuid, 'rt_1', 'at_1', now() + interval '1 hour'); end $$;
+do $$ begin perform public.google_token_set(current_setting('test.alice_company')::uuid, null, 'at_2', now() + interval '1 hour'); end $$;
+select pg_temp.ok((select refresh_token = 'rt_1' and access_token = 'at_2' from public.google_token_get(current_setting('test.alice_company')::uuid)),
+  'rafraîchissement du jeton : le refresh token est conservé');
