@@ -22,6 +22,7 @@ import InboxPage from './pages/app/inbox/InboxPage'
 import BillingPage from './pages/app/BillingPage'
 import AdminPage from './pages/app/AdminPage'
 import RemindersPage from './pages/app/RemindersPage'
+import PaymentsPage from './pages/app/PaymentsPage'
 import PricingPage from './pages/public/PricingPage'
 import { isSupabaseConfigured } from './lib/supabase'
 
@@ -78,6 +79,7 @@ export default function App() {
               <Route path="/boite-de-reception" element={<InboxPage />} />
               <Route path="/abonnement" element={<BillingPage />} />
               <Route path="/relances" element={<RemindersPage />} />
+              <Route path="/paiements" element={<PaymentsPage />} />
               {UPCOMING.map(([path, title, step]) => (
                 <Route key={path} path={path} element={<ComingSoonPage title={title} step={step} />} />
               ))}

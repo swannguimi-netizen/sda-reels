@@ -531,3 +531,42 @@ select pg_temp.login('relance@exemple.fr');
 select pg_temp.fails($$select * from public.due_reminders(true)$$, 'liste des relances réservée au serveur');
 select pg_temp.fails($$select public.record_reminder('quote', gen_random_uuid())$$, 'enregistrement réservé au serveur');
 select pg_temp.logout();
+
+-- ---------------------------------------------------------------------
+\echo '18. Acompte en ligne et facture d''acompte'
+-- Entreprise Business avec compte Stripe actif
+insert into auth.users (email) values ('acompte@exemple.fr');
+select pg_temp.login('acompte@exemple.fr');
+do $$ begin perform set_config('test.ac', (select id::text from public.create_company('Acompte SARL')), false); end $$;
+insert into public.clients (company_id, name, email) values (current_setting('test.ac')::uuid, 'Client Acompte', 'c@acompte.fr');
+insert into public.quotes (company_id, client_id, title, discount_percent) select current_setting('test.ac')::uuid, id, 'Cuisine', 10 from public.clients where name = 'Client Acompte';
+insert into public.quote_items (quote_id, company_id, description, quantity, unit_price, vat_rate)
+select id, company_id, 'Meubles', 1, 4000, 20 from public.quotes where title = 'Cuisine'
+union all select id, company_id, 'Pose', 1, 1000, 10 from public.quotes where title = 'Cuisine';
+update public.quotes set status = 'sent' where title = 'Cuisine';
+select pg_temp.fails($$update public.companies set stripe_charges_enabled = true$$, 'un client ne s''auto-déclare pas « compte Stripe actif »');
+select pg_temp.logout();
+update public.subscriptions set status = 'active', plan_id = 'business' where company_id = current_setting('test.ac')::uuid;
+do $$ begin perform set_config('test.ac_token', (select public_token::text from public.quotes where title = 'Cuisine'), false); end $$;
+set role anon;
+select pg_temp.ok((select (public.get_public_quote(current_setting('test.ac_token')::uuid) ->> 'online_deposit')::boolean = false), 'sans compte Stripe : pas d''acompte en ligne');
+reset role;
+update public.companies set stripe_account_id = 'acct_test', stripe_charges_enabled = true where id = current_setting('test.ac')::uuid;
+set role anon;
+select pg_temp.ok((select (public.get_public_quote(current_setting('test.ac_token')::uuid) ->> 'online_deposit')::boolean), 'Business + compte Stripe actif : acompte en ligne');
+select public.sign_quote(current_setting('test.ac_token')::uuid, 'Client Acompte', 'data:image/png;base64,iVBORw0KGgo=') is not null as signe \gset
+reset role;
+-- Devis : 4 000 € à 20 % + 1 000 € à 10 %, remise 10 % → HT 4 500 ; TVA 720 + 90 ; TTC 5 310 ; acompte 30 % = 1 593
+select pg_temp.ok((select total_ttc = 5310 and deposit_amount = 1593 from public.quotes where title = 'Cuisine'), 'devis : TTC 5 310 €, acompte 1 593 €');
+do $$ begin perform set_config('test.dep_inv', public.create_deposit_invoice((select id from public.quotes where title = 'Cuisine'), 1593, 'cs_test_1')::text, false); end $$;
+select pg_temp.ok((select kind = 'deposit' and status = 'paid' and number like 'FAC-%' and total_ht = 1350 and total_vat = 243 and total_ttc = 1593
+                   from public.invoices where id = current_setting('test.dep_inv')::uuid), 'facture d''acompte émise, payée, TVA au prorata (1 080 × 20 % + 270 × 10 %)');
+select pg_temp.ok((select deposit_paid_at is not null and stripe_checkout_session_id = 'cs_test_1' from public.quotes where title = 'Cuisine'), 'devis : acompte réglé');
+select pg_temp.ok(public.create_deposit_invoice((select id from public.quotes where title = 'Cuisine'), 1593, 'cs_test_1') = current_setting('test.dep_inv')::uuid
+                  and (select count(*) = 1 from public.invoices where kind = 'deposit' and company_id = current_setting('test.ac')::uuid), 'webhook rejoué : pas de doublon');
+select pg_temp.login('acompte@exemple.fr');
+do $$ begin perform set_config('test.final_inv', public.convert_quote_to_invoice((select id from public.quotes where title = 'Cuisine'))::text, false); end $$;
+select pg_temp.ok((select total_ttc = 5310 and amount_paid = 1593 and notes like '%Acompte(s) déjà facturé(s) : FAC-%' from public.invoices
+                   where id = current_setting('test.final_inv')::uuid), 'facture finale : acompte déduit et référencé');
+select pg_temp.fails($$select public.create_deposit_invoice((select id from public.quotes where title = 'Cuisine'), 1, 'x')$$, 'facture d''acompte réservée au serveur');
+select pg_temp.logout();

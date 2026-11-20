@@ -65,6 +65,7 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [modal, setModal] = useState<null | 'send' | 'client' | 'payment' | 'refuse'>(null)
   const [linkedInvoiceId, setLinkedInvoiceId] = useState<string | null>(null)
+  const [depositInvoiceId, setDepositInvoiceId] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [aiOpen, setAiOpen] = useState(isQuote && !id)
   const [aiGenerated, setAiGenerated] = useState(false)
@@ -106,8 +107,9 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
       })
       setDirty(false)
       if (isQuote) {
-        const { data: inv } = await supabase.from('invoices').select('id').eq('quote_id', id).limit(1)
-        setLinkedInvoiceId(inv?.[0]?.id ?? null)
+        const { data: inv } = await supabase.from('invoices').select('id, kind').eq('quote_id', id)
+        setLinkedInvoiceId(inv?.find((x) => x.kind !== 'deposit')?.id ?? null)
+        setDepositInvoiceId(inv?.find((x) => x.kind === 'deposit')?.id ?? null)
       }
     } catch {
       setNotFound(true)
@@ -324,7 +326,7 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">
-                {doc?.number ?? (isQuote ? 'Nouveau devis' : 'Facture brouillon')}
+                {doc?.number ?? (isQuote ? 'Nouveau devis' : 'Facture brouillon')}{invoice?.kind === 'deposit' && <span className="ml-2 align-middle text-sm font-medium text-violet-600">acompte</span>}
               </h1>
               {status}
             </div>
@@ -555,7 +557,7 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
             {quote.signed_by_name
               ? <>Signé en ligne par <strong>{quote.signed_by_name}</strong> le {dateFr(quote.accepted_at)}.</>
               : <>Accepté le {dateFr(quote.accepted_at)}.</>}
-            {quote.deposit_paid_at && <> Acompte réglé.</>}
+            {quote.deposit_paid_at && <> Acompte réglé en ligne{depositInvoiceId && <> (<Link to={`/factures/${depositInvoiceId}`} className="font-medium underline">facture d’acompte</Link>)</>}.</>}
           </p>
           {!quote.work_completed_at ? (
             <button className="btn-secondary" onClick={() => updateStatus({ work_completed_at: new Date().toISOString() }, 'Prestation marquée terminée')}>

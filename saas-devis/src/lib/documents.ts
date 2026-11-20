@@ -62,6 +62,7 @@ export interface Quote extends DocBase {
 export interface Invoice extends DocBase {
   status: InvoiceStatus
   quote_id: string | null
+  kind: 'standard' | 'deposit' | 'balance'
   issue_date: string | null
   due_date: string | null
   amount_paid: number

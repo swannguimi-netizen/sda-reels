@@ -118,6 +118,7 @@ export default function DocumentsListPage({ type }: { type: DocType }) {
                         <p className="flex items-center gap-1.5 font-semibold text-slate-900">
                           {r.number ?? <span className="italic text-slate-400">Brouillon</span>}
                           {isQuote && (r as Quote).ai_generated && <Sparkles className="h-3.5 w-3.5 text-brand-500" aria-label="Généré avec l’IA" />}
+                          {!isQuote && (r as Invoice).kind === 'deposit' && <span className="rounded bg-violet-100 px-1.5 py-0.5 text-[11px] font-medium text-violet-700">Acompte</span>}
                         </p>
                         {r.title && <p className="line-clamp-1 text-xs text-slate-500">{r.title}</p>}
                       </td>

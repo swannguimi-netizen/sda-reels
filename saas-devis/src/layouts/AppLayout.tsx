@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { daysLeft, useUsage } from '../lib/billing'
 import {
   BellRing, BookOpen, Building2, CalendarDays, ChevronsUpDown, CreditCard, FileText, Inbox, LayoutDashboard,
-  LogOut, Menu, Package, Receipt, Shield, Users, X,
+  LogOut, Menu, Package, Receipt, Shield, Users, Wallet, X,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { APP_NAME, supabase } from '../lib/supabase'
@@ -33,6 +33,7 @@ const NAV = [
     items: [
       { to: '/entreprise', label: 'Entreprise', icon: Building2 },
       { to: '/relances', label: 'Relances', icon: BellRing },
+      { to: '/paiements', label: 'Paiement en ligne', icon: Wallet },
       { to: '/abonnement', label: 'Abonnement', icon: CreditCard },
     ],
   },

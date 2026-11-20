@@ -19,3 +19,10 @@ verify_jwt = false
 # Appelée par pg_cron (en-tête x-cron-secret) ou par l'application (JWT vérifié dans la fonction)
 [functions.send-reminders]
 verify_jwt = false
+
+[functions.connect]
+verify_jwt = true
+
+# Page publique du devis (jeton) : pas de session
+[functions.deposit-checkout]
+verify_jwt = false

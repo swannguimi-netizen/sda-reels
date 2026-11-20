@@ -16,7 +16,8 @@ SaaS multi-tenant pour TPE/PME, artisans et freelances : devis et factures confo
 | 6 | Stripe et abonnements | ✅ (clés Stripe à brancher) |
 | 7 | Tableau de bord et admin | ✅ |
 | 8 | Relances automatiques | ✅ (planification pg_cron à activer) |
-| + | Acompte, rendez-vous, avis Google, mobile Expo | ⏳ (tables prêtes) |
+| 9 | Acompte payé en ligne (Stripe Connect) | ✅ (Connect à activer dans Stripe) |
+| + | Rendez-vous, avis Google, mobile Expo | ⏳ (tables prêtes) |
 
 ## Démarrage
 
@@ -55,6 +56,16 @@ supabase functions deploy stripe-webhook --no-verify-jwt   # Stripe → Webhooks
 reste utilisable : « Copier le lien » marque le devis comme envoyé et copie le lien de signature
 (à transmettre par SMS, WhatsApp…).
 
+Acompte en ligne (Stripe Connect) : activer Connect dans le tableau de bord Stripe, puis
+
+```bash
+supabase functions deploy connect
+supabase functions deploy deposit-checkout --no-verify-jwt
+# Stripe → Webhooks → endpoint « Événements des comptes connectés » vers stripe-webhook :
+#   checkout.session.completed, checkout.session.async_payment_succeeded, account.updated
+supabase secrets set STRIPE_CONNECT_WEBHOOK_SECRET=whsec_xxx
+```
+
 Relances automatiques : déployer la fonction puis planifier l'appel horaire.
 
 ```bash
@@ -82,6 +93,7 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 | `…08_billing.sql` | 4 offres, fonctionnalités par offre, blocage si abonnement inactif, événements Stripe |
 | `…09_admin.sql` | vue super-admin enrichie, statistiques plateforme, prolongation d'essai |
 | `…10_reminders.sql` | réglages et calcul des relances dues, fuseau horaire, pause par document |
+| `…11_online_deposit.sql` | compte Stripe Connect de l'entreprise, facture d'acompte, déduction sur la facture finale |
 | `…04_dashboard_admin_storage.sql` | `dashboard_stats()`, `current_usage()`, vues super-admin, buckets `logos` / `documents` |
 
 ### Principes de sécurité
@@ -150,9 +162,16 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 - Page `/relances` : réglages, aperçu, prochaines relances, historique.
 - Sécurité et fiabilité : `due_reminders()` / `record_reminder()` réservées au serveur, appel planifié authentifié par `CRON_SECRET` (Vault), réservation dans `email_logs` + index uniques → jamais deux fois la même relance, même en cas d'exécutions concurrentes ; en cas d'échec d'envoi, la relance est retentée à l'heure suivante.
 
+## Acompte payé en ligne (offres Business et Premium)
+
+- L'entreprise relie **son propre compte Stripe** (Stripe Connect, compte Standard) depuis `/paiements` : l'acompte est versé **directement** sur son compte, la plateforme ne l'encaisse jamais ; frais Stripe et litiges restent à la charge de l'entreprise (aucune responsabilité financière pour la plateforme, aucune commission).
+- Après la signature, la page du devis propose **« Payer l'acompte »** (Stripe Checkout, 3-D Secure) ; retour avec confirmation automatique.
+- À l'encaissement, le webhook crée la **facture d'acompte** (obligatoire en France) : numérotée, payée, TVA **au prorata de chaque taux** du devis, titre « FACTURE D'ACOMPTE » ; la facture finale déduit l'acompte et le référence. Rejeu du webhook sans doublon ; contrôle que le compte Stripe encaisseur est bien celui de l'entreprise du devis.
+- Notification email à l'entreprise à chaque acompte reçu.
+
 ### Tests
 
-138 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
+147 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
 
 ```bash
 npm run test:db     # PGHOST / PGPORT / PGUSER configurables

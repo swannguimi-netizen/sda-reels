@@ -33,7 +33,7 @@ export function DocumentPdf({ bundle, logoSrc }: { bundle: DocumentBundle; logoS
     ? { desc: '46%', qty: '10%', pu: '14%', vat: '10%', tot: '20%' }
     : { desc: '56%', qty: '10%', pu: '14%', vat: '0%', tot: '20%' }
 
-  const title = type === 'quote' ? 'DEVIS' : 'FACTURE'
+  const title = type === 'quote' ? 'DEVIS' : invoice?.kind === 'deposit' ? 'FACTURE D’ACOMPTE' : 'FACTURE'
   const legalLine = [
     company.name,
     company.legal_form,

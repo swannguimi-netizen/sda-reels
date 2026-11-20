@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { CheckCircle2, Download, FileX2, Loader2, PenLine, XCircle } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
+import { CheckCircle2, CreditCard, Download, FileX2, Loader2, Lock, PenLine, XCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { Alert, Spinner } from '../../components/ui'
 import { SignaturePad, type SignaturePadHandle } from '../../components/SignaturePad'
 import { lineTotal, type DocType, type DocumentBundle, type Invoice, type Quote } from '../../lib/documents'
 import { VAT_REGIME_LABELS, type Client, type CompanyDetails } from '../../lib/types'
 import { dateFr, eur, logoUrl } from '../../lib/format'
+import { invokeFunction } from '../../lib/functions'
 
 interface Payload {
   quote?: Quote
@@ -16,6 +17,7 @@ interface Payload {
   company: CompanyDetails
   expired?: boolean
   online_signature?: boolean
+  online_deposit?: boolean
   quote_number?: string | null
 }
 
@@ -23,12 +25,13 @@ export default function PublicDocumentPage({ type }: { type: DocType }) {
   const { token } = useParams()
   const [data, setData] = useState<Payload | null | undefined>(undefined)
 
-  const load = () => {
+  // Stable : sert aussi au rafraîchissement après signature et paiement
+  const load = useCallback(() => {
     if (!token || !/^[0-9a-f-]{36}$/i.test(token)) return setData(null)
     supabase.rpc(type === 'quote' ? 'get_public_quote' : 'get_public_invoice', { p_token: token })
       .then(({ data }) => setData((data as Payload) ?? null))
-  }
-  useEffect(load, [token, type])
+  }, [token, type])
+  useEffect(load, [load])
 
   if (data === undefined) return <div className="flex min-h-screen items-center justify-center"><Spinner className="h-8 w-8 text-slate-400" /></div>
   if (data === null) {
@@ -166,18 +169,7 @@ function SignatureSection({ data, quote, token, color, onDone }: {
   const [reason, setReason] = useState('')
 
   if (quote.status === 'accepted') {
-    return (
-      <div className="mt-6 rounded-2xl bg-emerald-50 p-6 text-center ring-1 ring-emerald-200">
-        <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" />
-        <p className="mt-3 font-semibold text-emerald-900">Devis accepté{quote.signed_by_name ? ` et signé par ${quote.signed_by_name}` : ''} le {dateFr(quote.accepted_at)}</p>
-        {quote.deposit_percent > 0 && !quote.deposit_paid_at && (
-          <p className="mt-2 text-sm text-emerald-800">
-            Un acompte de <strong>{eur(quote.deposit_amount)}</strong> est demandé. {data.company.name} vous communiquera les modalités de règlement.
-          </p>
-        )}
-        <p className="mt-2 text-sm text-emerald-700">Merci pour votre confiance !</p>
-      </div>
-    )
+    return <AcceptedSection data={data} quote={quote} token={token} color={color} onDone={onDone} />
   }
   if (quote.status === 'refused') return <div className="mt-6"><Alert>Vous avez décliné ce devis le {dateFr(quote.refused_at)}.</Alert></div>
   if (quote.status === 'expired' || data.expired) {
@@ -243,5 +235,70 @@ function SignatureSection({ data, quote, token, color, onDone }: {
         )}
       </div>
     </section>
+  )
+}
+
+/** Devis accepté : paiement de l'acompte en ligne (si proposé) ou modalités. */
+function AcceptedSection({ data, quote, token, color, onDone }: { data: Payload; quote: Quote; token: string; color: string; onDone: () => void }) {
+  const [params] = useSearchParams()
+  const returned = params.get('acompte')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const depositDue = quote.deposit_percent > 0 && !quote.deposit_paid_at
+
+  // Retour de Stripe : la confirmation (webhook) arrive en quelques secondes
+  useEffect(() => {
+    if (returned !== 'ok' || !depositDue) return
+    let n = 0
+    const t = setInterval(() => { if (++n > 10) clearInterval(t); onDone() }, 2500)
+    return () => clearInterval(t)
+  }, [returned, depositDue, onDone])
+
+  async function pay() {
+    setBusy(true)
+    setError(null)
+    try {
+      const { url } = await invokeFunction<{ url: string }>('deposit-checkout', { token }, 'Le paiement est momentanément indisponible.')
+      window.location.href = url
+    } catch (e) {
+      setError((e as Error).message)
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="mt-6 space-y-4">
+      <div className="rounded-2xl bg-emerald-50 p-6 text-center ring-1 ring-emerald-200">
+        <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" />
+        <p className="mt-3 font-semibold text-emerald-900">Devis accepté{quote.signed_by_name ? ` et signé par ${quote.signed_by_name}` : ''} le {dateFr(quote.accepted_at)}</p>
+        {quote.deposit_paid_at
+          ? <p className="mt-2 text-sm text-emerald-800">Acompte de <strong>{eur(quote.deposit_amount)}</strong> reçu le {dateFr(quote.deposit_paid_at)}. Votre facture d’acompte vous sera transmise par {data.company.name}.</p>
+          : !depositDue && <p className="mt-2 text-sm text-emerald-700">Merci pour votre confiance !</p>}
+      </div>
+
+      {depositDue && data.online_deposit && (
+        <section className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+          {returned === 'ok' ? (
+            <p className="flex items-center justify-center gap-2 text-sm text-slate-600"><Loader2 className="h-4 w-4 animate-spin" /> Paiement reçu, confirmation en cours…</p>
+          ) : (
+            <>
+              <h2 className="text-lg font-semibold text-slate-900">Régler l’acompte</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Acompte de {Number(quote.deposit_percent).toLocaleString('fr-FR')} % pour lancer votre projet. Paiement sécurisé par carte, versé directement à {data.company.name}.
+              </p>
+              {returned === 'annule' && <div className="mt-3"><Alert kind="info">Paiement annulé : rien n’a été débité. Vous pouvez réessayer quand vous le souhaitez.</Alert></div>}
+              {error && <div className="mt-3"><Alert>{error}</Alert></div>}
+              <button className="btn mt-4 w-full py-3 text-base text-white disabled:opacity-60" style={{ backgroundColor: color }} onClick={pay} disabled={busy}>
+                {busy ? <Spinner className="h-5 w-5" /> : <CreditCard className="h-5 w-5" />} Payer l’acompte de {eur(quote.deposit_amount)}
+              </button>
+              <p className="mt-2 flex items-center justify-center gap-1 text-xs text-slate-400"><Lock className="h-3 w-3" /> Paiement sécurisé par Stripe · 3-D Secure</p>
+            </>
+          )}
+        </section>
+      )}
+      {depositDue && !data.online_deposit && (
+        <p className="text-center text-sm text-slate-600">Un acompte de <strong>{eur(quote.deposit_amount)}</strong> est demandé. {data.company.name} vous communiquera les modalités de règlement.</p>
+      )}
+    </div>
   )
 }
