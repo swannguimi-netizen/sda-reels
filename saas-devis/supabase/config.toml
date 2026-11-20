@@ -4,3 +4,7 @@ verify_jwt = true
 
 [functions.generate-quote]
 verify_jwt = true
+
+# API publique du widget : pas de JWT, la clé publique du widget identifie l'entreprise
+[functions.widget-chat]
+verify_jwt = false

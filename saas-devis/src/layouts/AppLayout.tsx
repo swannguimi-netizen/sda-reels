@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   BookOpen, Building2, CalendarDays, ChevronsUpDown, CreditCard, FileText, Inbox, LayoutDashboard,
   LogOut, Menu, Package, Receipt, Shield, Users, X,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { APP_NAME } from '../lib/supabase'
+import { APP_NAME, supabase } from '../lib/supabase'
 import { logoUrl } from '../lib/format'
 
 const NAV = [
@@ -23,7 +23,7 @@ const NAV = [
     section: 'Assistant IA',
     items: [
       { to: '/boite-de-reception', label: 'Boîte de réception', icon: Inbox },
-      { to: '/connaissances', label: 'Base de connaissances', icon: BookOpen },
+      { to: '/assistant', label: 'Configuration', icon: BookOpen },
       { to: '/rendez-vous', label: 'Rendez-vous', icon: CalendarDays },
     ],
   },
@@ -36,8 +36,29 @@ const NAV = [
   },
 ]
 
+/** Nombre de conversations non lues (rafraîchi toutes les 30 s et en temps réel). */
+function useUnreadCount() {
+  const { company } = useAuth()
+  const [count, setCount] = useState(0)
+  const companyId = company?.id
+  useEffect(() => {
+    if (!companyId) return
+    const load = () => supabase.from('conversations').select('id', { count: 'exact', head: true })
+      .eq('company_id', companyId).eq('unread', true).eq('status', 'open')
+      .then(({ count: c }) => setCount(c ?? 0))
+    load()
+    const t = setInterval(load, 30_000)
+    const channel = supabase.channel(`unread-${companyId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'conversations', filter: `company_id=eq.${companyId}` }, load)
+      .subscribe()
+    return () => { clearInterval(t); supabase.removeChannel(channel) }
+  }, [companyId])
+  return count
+}
+
 export function AppLayout() {
   const [open, setOpen] = useState(false)
+  const unread = useUnreadCount()
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Barre mobile */}
@@ -74,7 +95,10 @@ export function AppLayout() {
                   className={({ isActive }) =>
                     `flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium transition ${
                       isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}`}>
-                  <Icon className="h-4 w-4" /> {label}
+                  <Icon className="h-4 w-4" /> <span className="flex-1">{label}</span>
+                  {to === '/boite-de-reception' && unread > 0 && (
+                    <span className="rounded-full bg-brand-600 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-white">{unread}</span>
+                  )}
                 </NavLink>
               ))}
             </div>

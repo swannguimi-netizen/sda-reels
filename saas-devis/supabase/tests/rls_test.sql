@@ -386,3 +386,28 @@ select pg_temp.logout();
 select pg_temp.login('bob@exemple.gf');
 select pg_temp.ok((select count(*) = 0 from public.ai_generations), 'Bob ne voit pas le journal IA d''Alice');
 select pg_temp.logout();
+
+-- ---------------------------------------------------------------------
+\echo '14. Prospects : conversion en client, statut piloté par les devis'
+do $$ begin perform set_config('test.conv', (select id::text from public.conversations limit 1), false); end $$;
+insert into public.leads (company_id, conversation_id, name, email, phone, need, is_quote_request, source)
+values (current_setting('test.alice_company')::uuid, current_setting('test.conv')::uuid, 'Jean Lebon', 'Jean@Lebon.fr', '0694 00 11 22',
+        'Pose d''un climatiseur', true, 'widget');
+select pg_temp.fails($$insert into public.leads (company_id, conversation_id, name) values (current_setting('test.alice_company')::uuid, current_setting('test.conv')::uuid, 'doublon')$$,
+  'un seul prospect par conversation');
+select pg_temp.login('alice@exemple.fr');
+do $$ begin perform set_config('test.lead', (select id::text from public.leads where name = 'Jean Lebon'), false); end $$;
+do $$ begin perform set_config('test.lead_client', public.convert_lead_to_client(current_setting('test.lead')::uuid)::text, false); end $$;
+select pg_temp.ok((select source = 'widget' and email = 'jean@lebon.fr' and notes like 'Pose%' from public.clients
+                   where id = current_setting('test.lead_client')::uuid), 'prospect converti en client (source assistant)');
+select pg_temp.ok(public.convert_lead_to_client(current_setting('test.lead')::uuid) = current_setting('test.lead_client')::uuid,
+  'conversion idempotente');
+insert into public.quotes (company_id, client_id, lead_id, title)
+values (current_setting('test.alice_company')::uuid, current_setting('test.lead_client')::uuid, current_setting('test.lead')::uuid, 'Climatisation');
+select pg_temp.ok((select status = 'quoted' from public.leads where id = current_setting('test.lead')::uuid), 'devis créé → prospect « devis envoyé »');
+update public.quotes set status = 'accepted' where lead_id = current_setting('test.lead')::uuid;
+select pg_temp.ok((select status = 'won' from public.leads where id = current_setting('test.lead')::uuid), 'devis accepté → prospect gagné');
+select pg_temp.logout();
+select pg_temp.login('bob@exemple.gf');
+select pg_temp.fails($$select public.convert_lead_to_client(current_setting('test.lead')::uuid)$$, 'Bob ne convertit pas les prospects d''Alice');
+select pg_temp.logout();

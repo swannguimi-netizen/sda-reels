@@ -12,7 +12,7 @@ SaaS multi-tenant pour TPE/PME, artisans et freelances : devis et factures confo
 | 2 | Profil entreprise, catalogue et clients | ✅ |
 | 3 | Devis + PDF (envoi, signature, facture) | ✅ (envoi email : à brancher sur Resend) |
 | 4 | Génération IA des devis | ✅ (clé API Claude à brancher) |
-| 5 | Assistant IA et widget | ⏳ (schéma prêt) |
+| 5 | Assistant IA et widget | ✅ (clé API Claude à brancher) |
 | 6 | Stripe et abonnements | ⏳ (schéma prêt) |
 | 7 | Tableau de bord et admin | ⏳ (fonctions SQL prêtes) |
 | + | Relances, acompte, rendez-vous, avis Google, mobile Expo | ⏳ (tables prêtes) |
@@ -41,6 +41,7 @@ supabase functions deploy send-document
 # IA (génération de devis)
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-xxx   # CLAUDE_MODEL facultatif (défaut : claude-opus-5-5)
 supabase functions deploy generate-quote
+supabase functions deploy widget-chat --no-verify-jwt   # API publique du widget
 ```
 
 `EMAIL_FROM` doit appartenir à un domaine vérifié dans Resend. Sans cette configuration, l'application
@@ -62,6 +63,7 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 | `…03_assistant_crm.sql` | base de connaissances, réglages assistant, conversations, messages, prospects, disponibilités, rendez-vous, Google Agenda, demandes d'avis, journal des emails, jetons push |
 | `…05_documents_editor.sql` | enregistrement atomique des lignes, duplication, facture publique, expiration, utilitaires des Edge Functions |
 | `…06_ai.sql` | journal des générations IA |
+| `…07_assistant.sql` | demandes de devis de l'assistant, conversion prospect → client, statut du prospect piloté par les devis |
 | `…04_dashboard_admin_storage.sql` | `dashboard_stats()`, `current_usage()`, vues super-admin, buckets `logos` / `documents` |
 
 ### Principes de sécurité
@@ -91,11 +93,20 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 - **Refus du modèle** : repli serveur `fallbacks: "default"` ; en cas d'échec, message clair et saisie manuelle possible.
 - Rien n'est enregistré sans validation : la proposition s'affiche ligne par ligne (catalogue / estimation), on décoche ce qu'on ne veut pas, puis on insère dans l'éditeur.
 
+## Assistant IA et widget
+
+- **Base de connaissances** par thèmes (horaires, services, tarifs, zone, FAQ) avec jauge de couverture et bouton **« Pré-remplir depuis mon entreprise »** (horaires depuis les disponibilités, services et tarifs TTC depuis le catalogue, FAQ type), sans IA donc instantané et gratuit.
+- **Widget** `public/widget.js` : JavaScript autonome sans dépendance, isolé du site hôte (Shadow DOM), aux couleurs de l'entreprise, questions suggérées, liens/emails/téléphones cliquables, plein écran sur mobile, réponses de l'équipe reçues en direct, robuste aux sites en ISO-8859-1. Une ligne à coller (aide pour WordPress, Wix, Shopify, Squarespace).
+- **Page de discussion** `/chat/<clé>` + **QR code** téléchargeable : pour les artisans sans site (bio Instagram, carte de visite, camion).
+- **Edge Function `widget-chat`** (publique, clé du widget) : Claude avec trois outils stricts — `save_contact`, `create_quote_request`, `request_human` ; prompt système construit depuis la base de connaissances et mis en cache ; quota mensuel (au-delà, message d'attente et passage à l'équipe) ; anti-abus (15 messages / 10 min par visiteur) ; domaines autorisés ; notification email à l'entreprise.
+- **Boîte de réception** en temps réel : filtres (non lues, à traiter, demandes de devis, archivées), reprise en main / retour à l'assistant, réponse manuelle, fiche contact modifiable, compteur de non-lus dans le menu.
+- **Du message au devis** : « Créer le devis » convertit le prospect en client et ouvre un devis dont le panneau IA est pré-rempli avec le besoin exprimé dans la conversation ; le statut du prospect suit ensuite le devis (devis envoyé → gagné / perdu).
+
 ### Tests
 
-98 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
+104 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
 
 ```bash
 npm run test:db     # PGHOST / PGPORT / PGUSER configurables
-cd supabase/functions && deno test generate-quote/   # contrôles de la réponse IA
+cd supabase/functions && deno test   # contrôles de la réponse IA et logique de l'assistant
 ```

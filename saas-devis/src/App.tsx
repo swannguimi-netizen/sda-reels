@@ -16,11 +16,12 @@ import { ToastProvider } from './components/Toast'
 import DocumentsListPage from './pages/app/documents/DocumentsListPage'
 import DocumentEditorPage from './pages/app/documents/DocumentEditorPage'
 import PublicDocumentPage from './pages/public/PublicDocumentPage'
+import PublicChatPage from './pages/public/PublicChatPage'
+import AssistantPage from './pages/app/assistant/AssistantPage'
+import InboxPage from './pages/app/inbox/InboxPage'
 import { isSupabaseConfigured } from './lib/supabase'
 
 const UPCOMING: Array<[string, string, string]> = [
-  ['/boite-de-reception', 'Boîte de réception', '5 · Assistant IA et widget'],
-  ['/connaissances', 'Base de connaissances', '5 · Assistant IA et widget'],
   ['/rendez-vous', 'Rendez-vous', 'Fonctionnalités avancées'],
   ['/abonnement', 'Abonnement', '6 · Stripe et abonnements'],
 ]
@@ -54,6 +55,7 @@ export default function App() {
           {/* Pages publiques envoyées aux clients */}
           <Route path="/d/:token" element={<PublicDocumentPage type="quote" />} />
           <Route path="/f/:token" element={<PublicDocumentPage type="invoice" />} />
+          <Route path="/chat/:key" element={<PublicChatPage />} />
           <Route element={<RequireSession />}>
             <Route path="/bienvenue" element={<OnboardingPage />} />
           </Route>
@@ -67,6 +69,9 @@ export default function App() {
               <Route path="/devis/:id" element={<DocumentEditorPage key="qe" type="quote" />} />
               <Route path="/factures" element={<DocumentsListPage key="i" type="invoice" />} />
               <Route path="/factures/:id" element={<DocumentEditorPage key="ie" type="invoice" />} />
+              <Route path="/assistant" element={<AssistantPage />} />
+              <Route path="/connaissances" element={<Navigate to="/assistant" replace />} />
+              <Route path="/boite-de-reception" element={<InboxPage />} />
               {UPCOMING.map(([path, title, step]) => (
                 <Route key={path} path={path} element={<ComingSoonPage title={title} step={step} />} />
               ))}

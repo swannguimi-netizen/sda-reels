@@ -7,3 +7,12 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Widget intégré sur les sites des clients : UTF-8 explicite (sites en ISO-8859-1),
+# chargeable depuis n'importe quel domaine, cache court pour diffuser les mises à jour
+[[headers]]
+  for = "/widget.js"
+  [headers.values]
+    Content-Type = "text/javascript; charset=utf-8"
+    Access-Control-Allow-Origin = "*"
+    Cache-Control = "public, max-age=300"

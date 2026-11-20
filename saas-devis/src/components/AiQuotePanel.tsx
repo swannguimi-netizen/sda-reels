@@ -33,14 +33,15 @@ const EXAMPLES = [
 
 const LOADING_STEPS = ['Lecture de votre catalogue…', 'Chiffrage des prestations…', 'Vérification des quantités et de la TVA…']
 
-export function AiQuotePanel({ companyId, clientId, vatApplies, onInsert, onClose }: {
+export function AiQuotePanel({ companyId, clientId, vatApplies, onInsert, onClose, initialDescription = '' }: {
   companyId: string
   clientId: string | null
   vatApplies: boolean
   onInsert: (p: Proposal) => void
   onClose: () => void
+  initialDescription?: string
 }) {
-  const [description, setDescription] = useState('')
+  const [description, setDescription] = useState(initialDescription)
   const [busy, setBusy] = useState(false)
   const [step, setStep] = useState(0)
   const [error, setError] = useState<string | null>(null)

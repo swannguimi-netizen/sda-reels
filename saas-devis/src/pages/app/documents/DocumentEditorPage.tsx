@@ -174,7 +174,8 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
 
     let docId = doc?.id ?? null
     if (!docId) {
-      const { data, error } = await supabase.from(TABLE[type]).insert({ ...fields, company_id: companyId }).select('id').single()
+      const leadId = isQuote ? search.get('lead') : null
+      const { data, error } = await supabase.from(TABLE[type]).insert({ ...fields, company_id: companyId, ...(leadId ? { lead_id: leadId } : {}) }).select('id').single()
       if (error) { setBusy(null); toast('error', dbError(error) ?? 'Erreur'); return null }
       docId = data.id
     } else {
@@ -367,6 +368,7 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
 
           {aiOpen && editable && isQuote && companyId && (
             <AiQuotePanel companyId={companyId} clientId={form.client_id || null} vatApplies={vatApplies}
+              initialDescription={!id ? search.get('besoin') ?? '' : ''}
               onInsert={insertProposal} onClose={() => setAiOpen(false)} />
           )}
 

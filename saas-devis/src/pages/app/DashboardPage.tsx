@@ -55,7 +55,7 @@ export default function DashboardPage() {
           {[
             { to: '/entreprise', icon: FileText, title: 'Compléter le profil', text: 'Logo, adresse, mentions légales' },
             { to: '/catalogue', icon: Package, title: 'Créer le catalogue', text: 'Vos produits et prestations' },
-            { to: '/connaissances', icon: MessageSquareText, title: 'Former l’assistant', text: 'Horaires, tarifs, FAQ' },
+            { to: '/assistant', icon: MessageSquareText, title: 'Former l’assistant', text: 'Horaires, tarifs, FAQ' },
           ].map(({ to, icon: Icon, title, text }) => (
             <Link key={to} to={to} className="flex items-start gap-3 rounded-lg border border-slate-200 p-4 transition hover:border-brand-300 hover:bg-brand-50/40">
               <Icon className="mt-0.5 h-5 w-5 text-brand-600" />
