@@ -1,7 +1,8 @@
 -- =====================================================================
 -- 12 · Prise de rendez-vous (assistant IA + Google Agenda)
 -- =====================================================================
-create extension if not exists btree_gist;
+create schema if not exists extensions;
+create extension if not exists btree_gist with schema extensions;
 
 alter table public.companies
   add column appointment_min_notice_hours integer not null default 4 check (appointment_min_notice_hours between 0 and 168),
