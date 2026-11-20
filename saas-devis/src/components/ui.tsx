@@ -1,3 +1,4 @@
+import type React from 'react'
 import type { ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 
@@ -35,5 +36,46 @@ export function PageHeader({ title, description, actions }: { title: string; des
       </div>
       {actions && <div className="flex gap-2">{actions}</div>}
     </div>
+  )
+}
+
+export function EmptyState({ icon: Icon, title, text, action }: {
+  icon: React.ComponentType<{ className?: string }>
+  title: string
+  text: string
+  action?: ReactNode
+}) {
+  return (
+    <div className="card flex flex-col items-center px-6 py-14 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-50">
+        <Icon className="h-6 w-6 text-brand-600" />
+      </span>
+      <p className="mt-4 font-semibold text-slate-900">{title}</p>
+      <p className="mt-1 max-w-sm text-sm text-slate-500">{text}</p>
+      {action && <div className="mt-5">{action}</div>}
+    </div>
+  )
+}
+
+export function Field({ label, htmlFor, hint, children, className = '' }: {
+  label: string
+  htmlFor?: string
+  hint?: ReactNode
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={className}>
+      <label className="label" htmlFor={htmlFor}>{label}</label>
+      {children}
+      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+    </div>
+  )
+}
+
+export function SearchInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+  return (
+    <input type="search" className="input sm:max-w-xs" placeholder={placeholder} value={value}
+      onChange={(e) => onChange(e.target.value)} aria-label={placeholder} />
   )
 }

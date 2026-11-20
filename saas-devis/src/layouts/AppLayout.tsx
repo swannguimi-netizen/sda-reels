@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { APP_NAME } from '../lib/supabase'
+import { logoUrl } from '../lib/format'
 
 const NAV = [
   { section: null, items: [{ to: '/', label: 'Tableau de bord', icon: LayoutDashboard, end: true }] },
@@ -99,10 +100,14 @@ function CompanySwitcher() {
   return (
     <div className="border-y border-slate-100 px-3 py-3">
       <label className="relative flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-bold text-white"
-          style={{ backgroundColor: company.brand_color }}>
-          {company.name.slice(0, 1).toUpperCase()}
-        </span>
+        {company.logo_path ? (
+          <img src={logoUrl(company.logo_path)!} alt="" className="h-8 w-8 shrink-0 rounded-md border border-slate-100 object-contain" />
+        ) : (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-sm font-bold text-white"
+            style={{ backgroundColor: company.brand_color }}>
+            {company.name.slice(0, 1).toUpperCase()}
+          </span>
+        )}
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800">{company.name}</span>
         {memberships.length > 1 && (
           <>

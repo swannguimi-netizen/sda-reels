@@ -19,10 +19,11 @@ export default function DashboardPage() {
   const { company, profile } = useAuth()
   const [stats, setStats] = useState<Stats | null>(null)
 
+  const companyId = company?.id
   useEffect(() => {
-    if (!company) return
-    supabase.rpc('dashboard_stats', { p_company_id: company.id }).then(({ data }) => setStats(data as Stats))
-  }, [company])
+    if (!companyId) return
+    supabase.rpc('dashboard_stats', { p_company_id: companyId }).then(({ data }) => setStats(data as Stats))
+  }, [companyId])
 
   const cards = [
     { label: 'Devis du mois', value: stats?.quotes_this_month, icon: FileText },

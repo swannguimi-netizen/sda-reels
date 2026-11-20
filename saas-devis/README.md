@@ -9,7 +9,7 @@ SaaS multi-tenant pour TPE/PME, artisans et freelances : devis et factures confo
 | # | Étape | État |
 |---|-------|------|
 | 1 | Base de données, RLS et authentification | ✅ |
-| 2 | Profil entreprise et catalogue | ⏳ |
+| 2 | Profil entreprise, catalogue et clients | ✅ |
 | 3 | Devis + PDF (envoi, signature, facture) | ⏳ (schéma prêt) |
 | 4 | Génération IA des devis | ⏳ |
 | 5 | Assistant IA et widget | ⏳ (schéma prêt) |
@@ -60,7 +60,7 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 
 ### Tests
 
-70 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
+79 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
 
 ```bash
 npm run test:db     # PGHOST / PGPORT / PGUSER configurables

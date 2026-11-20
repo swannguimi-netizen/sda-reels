@@ -9,12 +9,13 @@ import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 import OnboardingPage from './pages/auth/OnboardingPage'
 import DashboardPage from './pages/app/DashboardPage'
 import ComingSoonPage from './pages/app/ComingSoonPage'
+import CompanySettingsPage from './pages/app/settings/CompanySettingsPage'
+import CatalogPage from './pages/app/CatalogPage'
+import ClientsPage from './pages/app/ClientsPage'
+import { ToastProvider } from './components/Toast'
 import { isSupabaseConfigured } from './lib/supabase'
 
 const UPCOMING: Array<[string, string, string]> = [
-  ['/entreprise', 'Profil entreprise', '2 · Profil entreprise et catalogue'],
-  ['/catalogue', 'Catalogue', '2 · Profil entreprise et catalogue'],
-  ['/clients', 'Clients', '2 · Profil entreprise et catalogue'],
   ['/devis', 'Devis', '3 · Devis + PDF'],
   ['/factures', 'Factures', '3 · Devis + PDF'],
   ['/boite-de-reception', 'Boîte de réception', '5 · Assistant IA et widget'],
@@ -41,6 +42,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ToastProvider>
         <Routes>
           <Route element={<GuestOnly />}>
             <Route path="/connexion" element={<LoginPage />} />
@@ -54,6 +56,9 @@ export default function App() {
           <Route element={<RequireCompany />}>
             <Route element={<AppLayout />}>
               <Route index element={<DashboardPage />} />
+              <Route path="/entreprise" element={<CompanySettingsPage />} />
+              <Route path="/catalogue" element={<CatalogPage />} />
+              <Route path="/clients" element={<ClientsPage />} />
               {UPCOMING.map(([path, title, step]) => (
                 <Route key={path} path={path} element={<ComingSoonPage title={title} step={step} />} />
               ))}
@@ -64,6 +69,7 @@ export default function App() {
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   )

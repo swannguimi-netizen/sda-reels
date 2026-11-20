@@ -293,3 +293,29 @@ update public.quotes set work_completed_at = now() where id = current_setting('t
 select pg_temp.ok((select count(*) = 1 and bool_and(email = 'dupont@client.fr') from public.review_requests),
   'prestation terminée → demande d''avis planifiée');
 select pg_temp.logout();
+
+-- ---------------------------------------------------------------------
+\echo '11. Rôles : un membre gère catalogue et clients, pas le profil'
+update public.subscriptions set plan_id = 'pro' where company_id = current_setting('test.alice_company')::uuid;
+insert into public.company_members (company_id, user_id, role)
+select current_setting('test.alice_company')::uuid, id, 'member' from auth.users where email = 'collegue@exemple.fr';
+select pg_temp.login('collegue@exemple.fr');
+update public.companies set name = 'Renommée' where id = current_setting('test.alice_company')::uuid;
+select pg_temp.ok((select name = 'Plomberie Martin' from public.companies), 'un membre ne modifie pas le profil');
+insert into public.products (company_id, name, unit_price) values (current_setting('test.alice_company')::uuid, 'Déplacement', 35);
+insert into public.clients (company_id, name) values (current_setting('test.alice_company')::uuid, 'M. Henry');
+select pg_temp.ok((select count(*) = 3 from public.products), 'un membre ajoute au catalogue');
+select pg_temp.ok((select count(*) = 2 from public.clients), 'un membre ajoute des clients');
+select pg_temp.fails(format($q$insert into storage.objects (bucket_id, name) values ('logos', %L)$q$,
+  current_setting('test.alice_company') || '/logo.png'), 'un membre ne change pas le logo');
+update public.company_members set role = 'owner' where user_id = (select auth.uid());
+select pg_temp.logout();
+select pg_temp.ok((select role = 'member' from public.company_members m join auth.users u on u.id = m.user_id
+                   where u.email = 'collegue@exemple.fr'), 'un membre ne peut pas s''auto-promouvoir');
+select pg_temp.fails($$delete from public.clients where name = 'Mme Dupont'$$, 'client avec devis non supprimable');
+select pg_temp.login('alice@exemple.fr');
+update public.companies set siret = '12345678900012', brand_color = '#059669', logo_path = current_setting('test.alice_company') || '/logo.png';
+select pg_temp.ok((select brand_color = '#059669' from public.companies), 'la propriétaire modifie le profil');
+select pg_temp.fails($$update public.companies set brand_color = 'rouge'$$, 'couleur invalide refusée');
+select pg_temp.fails($$update public.companies set siret = '123'$$, 'SIRET mal formé refusé');
+select pg_temp.logout();
