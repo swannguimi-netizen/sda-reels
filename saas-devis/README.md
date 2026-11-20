@@ -11,7 +11,7 @@ SaaS multi-tenant pour TPE/PME, artisans et freelances : devis et factures confo
 | 1 | Base de données, RLS et authentification | ✅ |
 | 2 | Profil entreprise, catalogue et clients | ✅ |
 | 3 | Devis + PDF (envoi, signature, facture) | ✅ (envoi email : à brancher sur Resend) |
-| 4 | Génération IA des devis | ⏳ |
+| 4 | Génération IA des devis | ✅ (clé API Claude à brancher) |
 | 5 | Assistant IA et widget | ⏳ (schéma prêt) |
 | 6 | Stripe et abonnements | ⏳ (schéma prêt) |
 | 7 | Tableau de bord et admin | ⏳ (fonctions SQL prêtes) |
@@ -37,6 +37,10 @@ Edge Functions et secrets (envoi des emails via Resend) :
 ```bash
 supabase secrets set RESEND_API_KEY=re_xxx EMAIL_FROM=devis@votre-domaine.fr APP_URL=https://votre-app.netlify.app
 supabase functions deploy send-document
+
+# IA (génération de devis)
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-xxx   # CLAUDE_MODEL facultatif (défaut : claude-opus-5-5)
+supabase functions deploy generate-quote
 ```
 
 `EMAIL_FROM` doit appartenir à un domaine vérifié dans Resend. Sans cette configuration, l'application
@@ -57,6 +61,7 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 | `…02_quotes_invoices.sql` | catalogue, clients, devis, factures, numérotation `DEV-2026-001` / `FAC-2026-001`, calcul HT/TVA/TTC, signature publique, conversion en facture |
 | `…03_assistant_crm.sql` | base de connaissances, réglages assistant, conversations, messages, prospects, disponibilités, rendez-vous, Google Agenda, demandes d'avis, journal des emails, jetons push |
 | `…05_documents_editor.sql` | enregistrement atomique des lignes, duplication, facture publique, expiration, utilitaires des Edge Functions |
+| `…06_ai.sql` | journal des générations IA |
 | `…04_dashboard_admin_storage.sql` | `dashboard_stats()`, `current_usage()`, vues super-admin, buckets `logos` / `documents` |
 
 ### Principes de sécurité
@@ -78,10 +83,19 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 - **Page publique** `/d/<jeton>` : consultation, PDF, signature tracée au doigt, refus motivé. `/f/<jeton>` pour les factures.
 - **Factures** : conversion d'un devis accepté (acompte déjà versé déduit), numéro attribué à l'émission, encaissements partiels.
 
+## Génération de devis par IA
+
+- Edge Function `generate-quote` : le dirigeant décrit le besoin en une phrase ; Claude (`claude-opus-5-5`, effort `medium`) reçoit le catalogue, le régime de TVA et la localisation de l'entreprise, et répond en **JSON structuré** (`output_config.format`) : objet, introduction, lignes, hypothèses, questions à poser au client.
+- **Le catalogue fait foi** : prix, unité et TVA des produits reconnus sont repris du catalogue ; les identifiants inventés deviennent des « prix estimés » ; nombres bornés, TVA conforme au régime (`proposal.ts`, testé avec `deno test`).
+- **Quota** : chaque génération est décomptée (`consume_ai_message`, 200/mois en Starter, 1 000 en Pro) avant l'appel ; journal dans `ai_generations`.
+- **Refus du modèle** : repli serveur `fallbacks: "default"` ; en cas d'échec, message clair et saisie manuelle possible.
+- Rien n'est enregistré sans validation : la proposition s'affiche ligne par ligne (catalogue / estimation), on décoche ce qu'on ne veut pas, puis on insère dans l'éditeur.
+
 ### Tests
 
-92 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
+98 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
 
 ```bash
 npm run test:db     # PGHOST / PGPORT / PGUSER configurables
+cd supabase/functions && deno test generate-quote/   # contrôles de la réponse IA
 ```

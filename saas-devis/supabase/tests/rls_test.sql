@@ -367,3 +367,22 @@ update public.quotes set status = 'refused', refusal_reason = 'Trop cher' where 
 select pg_temp.ok((select refusal_reason = 'Trop cher' and refused_at is not null from public.quotes where id = current_setting('test.q2')::uuid),
   'refus manuel avec motif');
 select pg_temp.logout();
+
+-- ---------------------------------------------------------------------
+\echo '13. IA : quota des générations de devis et journal'
+update public.usage_counters set ai_messages = 0, ai_quote_generations = 0 where company_id = current_setting('test.alice_company')::uuid;
+select pg_temp.ok(public.consume_ai_message(current_setting('test.alice_company')::uuid, 'quote'), 'génération de devis décomptée');
+select pg_temp.ok((select ai_quote_generations = 1 and ai_messages = 0 from public.usage_counters
+                   where company_id = current_setting('test.alice_company')::uuid and period = date_trunc('month', now())::date),
+  'compteur séparé messages / devis');
+insert into public.ai_generations (company_id, kind, prompt, model) values (current_setting('test.alice_company')::uuid, 'quote', 'Chauffe-eau 200 L', 'claude-opus-5-5');
+select pg_temp.login('alice@exemple.fr');
+select pg_temp.ok((select count(*) = 1 from public.ai_generations), 'Alice voit son journal IA');
+select pg_temp.fails($$insert into public.ai_generations (company_id, kind, prompt) values (current_setting('test.alice_company')::uuid, 'quote', 'x')$$,
+  'journal IA non modifiable depuis l''app');
+update public.quotes set ai_generated = true where id = current_setting('test.q3')::uuid;
+select pg_temp.ok((select ai_generated from public.quotes where id = current_setting('test.q3')::uuid), 'devis marqué « généré par IA »');
+select pg_temp.logout();
+select pg_temp.login('bob@exemple.gf');
+select pg_temp.ok((select count(*) = 0 from public.ai_generations), 'Bob ne voit pas le journal IA d''Alice');
+select pg_temp.logout();

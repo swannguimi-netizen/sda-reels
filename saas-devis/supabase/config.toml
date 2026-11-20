@@ -1,3 +1,6 @@
 # Configuration Supabase CLI (extrait) — `supabase link` complète le reste
 [functions.send-document]
 verify_jwt = true
+
+[functions.generate-quote]
+verify_jwt = true

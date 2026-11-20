@@ -115,7 +115,10 @@ export default function DocumentsListPage({ type }: { type: DocType }) {
                     <tr key={r.id} onClick={() => navigate(`${base}/${r.id}`)}
                       className="grid cursor-pointer grid-cols-[1fr_auto] gap-x-3 px-4 py-3 hover:bg-slate-50 md:table-row md:p-0">
                       <td className="md:px-4 md:py-3">
-                        <p className="font-semibold text-slate-900">{r.number ?? <span className="italic text-slate-400">Brouillon</span>}</p>
+                        <p className="flex items-center gap-1.5 font-semibold text-slate-900">
+                          {r.number ?? <span className="italic text-slate-400">Brouillon</span>}
+                          {isQuote && (r as Quote).ai_generated && <Sparkles className="h-3.5 w-3.5 text-brand-500" aria-label="Généré avec l’IA" />}
+                        </p>
                         {r.title && <p className="line-clamp-1 text-xs text-slate-500">{r.title}</p>}
                       </td>
                       <td className="order-3 text-slate-600 md:order-none md:px-4 md:py-3">

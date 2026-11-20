@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { invokeFunction } from './functions'
 import type { DocType, DocumentBundle, Invoice, LineItem, Quote } from './documents'
 import { newLine } from './documents'
 import type { Client, CompanyDetails } from './types'
@@ -61,13 +62,6 @@ export async function buildAndStorePdf(type: DocType, id: string) {
   return { blob, bundle }
 }
 
-export async function sendByEmail(params: { type: DocType; id: string; to: string; subject: string; message: string }) {
-  const { data, error } = await supabase.functions.invoke('send-document', { body: params })
-  if (error) {
-    // Message renvoyé par la fonction, s'il existe
-    const ctx = (error as { context?: Response }).context
-    const detail = ctx && typeof ctx.json === 'function' ? await ctx.json().catch(() => null) : null
-    throw new Error(detail?.error ?? 'L’envoi de l’email a échoué. Vérifiez la configuration Resend.')
-  }
-  return data
+export function sendByEmail(params: { type: DocType; id: string; to: string; subject: string; message: string }) {
+  return invokeFunction('send-document', params, 'L’envoi de l’email a échoué. Vérifiez la configuration Resend.')
 }

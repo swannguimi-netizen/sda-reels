@@ -100,8 +100,8 @@ export const today = () => new Date().toLocaleDateString('sv-SE') // AAAA-MM-JJ 
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100
 
-export const lineTotal = (l: Pick<LineItem, 'kind' | 'quantity' | 'unit_price' | 'discount_percent'>) =>
-  l.kind === 'item' ? r2(l.quantity * l.unit_price * (1 - l.discount_percent / 100)) : 0
+export const lineTotal = (l: Pick<LineItem, 'kind' | 'quantity' | 'unit_price'> & { discount_percent?: number }) =>
+  l.kind === 'item' ? r2(l.quantity * l.unit_price * (1 - (l.discount_percent ?? 0) / 100)) : 0
 
 /** Même algorithme que private.compute_totals() (migration 02). */
 export function computeTotals(lines: LineItem[], discountPercent: number, regime: VatRegime) {

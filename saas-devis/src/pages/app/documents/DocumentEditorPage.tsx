@@ -2,8 +2,8 @@ import type React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
-  ArrowLeft, Ban, Check, CheckCircle2, Copy, Download, Eye, FileCheck2, Hammer, Link2, Mail, Plus, Receipt,
-  Save, Send, Trash2, Wallet, XCircle,
+  ArrowLeft, Ban, HelpCircle, Check, CheckCircle2, Copy, Download, Eye, FileCheck2, Hammer, Link2, Mail, Plus, Receipt,
+  Save, Send, Sparkles, Trash2, Wallet, XCircle,
 } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../contexts/AuthContext'
@@ -12,6 +12,7 @@ import { Modal } from '../../../components/Modal'
 import { RowMenu } from '../../../components/RowMenu'
 import { NumberInput } from '../../../components/NumberInput'
 import { LineItemsEditor } from '../../../components/LineItemsEditor'
+import { AiQuotePanel, type Proposal } from '../../../components/AiQuotePanel'
 import { InvoiceBadge, QuoteBadge } from '../../../components/StatusBadge'
 import { Alert, Field, Spinner } from '../../../components/ui'
 import { ClientModal, emptyClientDraft } from '../ClientsPage'
@@ -64,6 +65,9 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
   const [modal, setModal] = useState<null | 'send' | 'client' | 'payment' | 'refuse'>(null)
   const [linkedInvoiceId, setLinkedInvoiceId] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
+  const [aiOpen, setAiOpen] = useState(isQuote && !id)
+  const [aiGenerated, setAiGenerated] = useState(false)
+  const [aiQuestions, setAiQuestions] = useState<string[]>([])
 
   const companyId = company?.id
 
@@ -162,6 +166,7 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
         issue_date: form!.issue_date || today(),
         valid_until: form!.valid_until || null,
         deposit_percent: form!.deposit_percent,
+        ...(aiGenerated ? { ai_generated: true } : {}),
       })
     } else {
       fields.due_date = form!.due_date || null
@@ -187,6 +192,27 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
     }
     toast('success', 'Enregistré')
     return docId
+  }
+
+  function insertProposal(p: Proposal) {
+    const vat = (v: number) => (vatApplies ? v : 0)
+    const incoming = p.lines.map((l) => newLine({
+      product_id: l.product_id, kind: l.kind, description: l.description, quantity: l.quantity,
+      unit: l.unit, unit_price: l.unit_price, vat_rate: vat(l.vat_rate),
+    }))
+    // Remplace la ligne vide de départ, sinon ajoute à la suite
+    const isBlank = lines.every((l) => l.kind === 'item' && !l.description.trim() && !l.unit_price)
+    setLines(isBlank ? incoming : [...lines, ...incoming])
+    setForm({
+      ...form!,
+      title: form!.title || p.title,
+      intro: form!.intro || p.intro,
+    })
+    setDirty(true)
+    setAiGenerated(true)
+    setAiQuestions(p.questions)
+    setAiOpen(false)
+    toast('success', `${incoming.length} ligne${incoming.length > 1 ? 's' : ''} insérée${incoming.length > 1 ? 's' : ''} : relisez puis enregistrez`)
   }
 
   async function ensureSaved(): Promise<string | null> {
@@ -339,6 +365,22 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
             )}
           </section>
 
+          {aiOpen && editable && isQuote && companyId && (
+            <AiQuotePanel companyId={companyId} clientId={form.client_id || null} vatApplies={vatApplies}
+              onInsert={insertProposal} onClose={() => setAiOpen(false)} />
+          )}
+
+          {aiQuestions.length > 0 && (
+            <div className="flex items-start gap-3 rounded-xl border border-brand-100 bg-brand-50 p-4 text-sm text-brand-800">
+              <HelpCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium">À vérifier avec le client avant l’envoi</p>
+                <ul className="mt-1 list-disc pl-5">{aiQuestions.map((q) => <li key={q}>{q}</li>)}</ul>
+              </div>
+              <button onClick={() => setAiQuestions([])} className="text-brand-500 hover:text-brand-800" aria-label="Masquer"><XCircle className="h-4 w-4" /></button>
+            </div>
+          )}
+
           {/* Informations */}
           <section className="card grid gap-4 p-5 sm:grid-cols-2">
             <Field label="Objet" htmlFor="title" className="sm:col-span-2">
@@ -373,7 +415,14 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
 
           {/* Lignes */}
           <section className="card p-5">
-            <h2 className="mb-3 font-semibold text-slate-900">Prestations</h2>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h2 className="font-semibold text-slate-900">Prestations</h2>
+              {editable && isQuote && !aiOpen && (
+                <button className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:underline" onClick={() => setAiOpen(true)}>
+                  <Sparkles className="h-4 w-4" /> Générer avec l’IA
+                </button>
+              )}
+            </div>
             <LineItemsEditor lines={lines} onChange={setL} products={products} vatApplies={vatApplies}
               defaultVat={Number(details.default_vat_rate)} readOnly={!editable} />
           </section>
