@@ -13,11 +13,12 @@ import CompanySettingsPage from './pages/app/settings/CompanySettingsPage'
 import CatalogPage from './pages/app/CatalogPage'
 import ClientsPage from './pages/app/ClientsPage'
 import { ToastProvider } from './components/Toast'
+import DocumentsListPage from './pages/app/documents/DocumentsListPage'
+import DocumentEditorPage from './pages/app/documents/DocumentEditorPage'
+import PublicDocumentPage from './pages/public/PublicDocumentPage'
 import { isSupabaseConfigured } from './lib/supabase'
 
 const UPCOMING: Array<[string, string, string]> = [
-  ['/devis', 'Devis', '3 · Devis + PDF'],
-  ['/factures', 'Factures', '3 · Devis + PDF'],
   ['/boite-de-reception', 'Boîte de réception', '5 · Assistant IA et widget'],
   ['/connaissances', 'Base de connaissances', '5 · Assistant IA et widget'],
   ['/rendez-vous', 'Rendez-vous', 'Fonctionnalités avancées'],
@@ -50,6 +51,9 @@ export default function App() {
             <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
           </Route>
           <Route path="/nouveau-mot-de-passe" element={<ResetPasswordPage />} />
+          {/* Pages publiques envoyées aux clients */}
+          <Route path="/d/:token" element={<PublicDocumentPage type="quote" />} />
+          <Route path="/f/:token" element={<PublicDocumentPage type="invoice" />} />
           <Route element={<RequireSession />}>
             <Route path="/bienvenue" element={<OnboardingPage />} />
           </Route>
@@ -59,6 +63,10 @@ export default function App() {
               <Route path="/entreprise" element={<CompanySettingsPage />} />
               <Route path="/catalogue" element={<CatalogPage />} />
               <Route path="/clients" element={<ClientsPage />} />
+              <Route path="/devis" element={<DocumentsListPage key="q" type="quote" />} />
+              <Route path="/devis/:id" element={<DocumentEditorPage key="qe" type="quote" />} />
+              <Route path="/factures" element={<DocumentsListPage key="i" type="invoice" />} />
+              <Route path="/factures/:id" element={<DocumentEditorPage key="ie" type="invoice" />} />
               {UPCOMING.map(([path, title, step]) => (
                 <Route key={path} path={path} element={<ComingSoonPage title={title} step={step} />} />
               ))}

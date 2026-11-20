@@ -319,3 +319,51 @@ select pg_temp.ok((select brand_color = '#059669' from public.companies), 'la pr
 select pg_temp.fails($$update public.companies set brand_color = 'rouge'$$, 'couleur invalide refusée');
 select pg_temp.fails($$update public.companies set siret = '123'$$, 'SIRET mal formé refusé');
 select pg_temp.logout();
+
+-- ---------------------------------------------------------------------
+\echo '12. Éditeur : enregistrement des lignes, duplication, facture publique'
+select pg_temp.login('alice@exemple.fr');
+do $$ begin perform set_config('test.q2', (select id::text from public.quotes where number like '%-002'), false); end $$;
+do $$ begin perform public.save_document_items('quote', current_setting('test.q2')::uuid, '[
+  {"kind":"section","description":"Salle de bain"},
+  {"description":"Pose carrelage","quantity":12.5,"unit":"m²","unit_price":42,"vat_rate":10},
+  {"description":"Fournitures","quantity":1,"unit_price":300,"vat_rate":20,"discount_percent":10},
+  {"kind":"note","description":"Carrelage fourni par le client"}
+]'::jsonb); end $$;
+select pg_temp.ok((select total_ht = 795 and total_vat = 106.50 and total_ttc = 901.50
+                   from public.quotes where id = current_setting('test.q2')::uuid),
+  'lignes, sections et notes enregistrées ; totaux recalculés (525 + 270 HT)');
+do $$ begin perform public.save_document_items('quote', current_setting('test.q2')::uuid,
+  '[{"description":"Forfait","quantity":1,"unit_price":100,"vat_rate":20}]'::jsonb); end $$;
+select pg_temp.ok((select count(*) = 1 from public.quote_items where quote_id = current_setting('test.q2')::uuid)
+                  and (select total_ttc = 120 from public.quotes where id = current_setting('test.q2')::uuid),
+  'remplacement atomique des lignes');
+select pg_temp.fails($$select public.save_document_items('quote', current_setting('test.alice_quote')::uuid, '[]')$$,
+  'lignes d''un devis signé non remplaçables');
+select pg_temp.fails($$select public.save_document_items('invoice', (select id from public.invoices limit 1), '[]')$$,
+  'lignes d''une facture émise non remplaçables');
+do $$ begin perform set_config('test.q3', public.duplicate_quote(current_setting('test.alice_quote')::uuid)::text, false); end $$;
+select pg_temp.ok((select status = 'draft' and number like '%-003' and total_ttc = 1518 and signature_data is null
+                   from public.quotes where id = current_setting('test.q3')::uuid), 'duplication d''un devis signé → nouveau brouillon');
+select pg_temp.logout();
+select pg_temp.login('bob@exemple.gf');
+select pg_temp.fails($$select public.save_document_items('quote', current_setting('test.q2')::uuid, '[]')$$,
+  'Bob ne modifie pas les lignes d''Alice');
+select pg_temp.fails($$select public.duplicate_quote(current_setting('test.q2')::uuid)$$, 'Bob ne duplique pas les devis d''Alice');
+select pg_temp.logout();
+do $$ begin perform set_config('test.inv_token', (select public_token::text from public.invoices limit 1), false); end $$;
+set role anon;
+select pg_temp.ok((select (public.get_public_invoice(current_setting('test.inv_token')::uuid) -> 'invoice' ->> 'number') like 'FAC-%'),
+  'facture consultable par son lien');
+select pg_temp.fails($$select public.expire_quotes()$$, 'expiration réservée au serveur');
+reset role;
+select pg_temp.ok(public.is_subscription_active(current_setting('test.alice_company')::uuid), 'abonnement actif (service)');
+select public.increment_email_usage(current_setting('test.alice_company')::uuid) is null as x \gset
+select pg_temp.ok((select emails_sent = 1 from public.usage_counters where company_id = current_setting('test.alice_company')::uuid
+                   and period = date_trunc('month', now())::date), 'compteur d''emails');
+select pg_temp.login('alice@exemple.fr');
+select pg_temp.fails($$select public.increment_email_usage(current_setting('test.alice_company')::uuid)$$, 'compteur d''emails non appelable depuis l''app');
+update public.quotes set status = 'refused', refusal_reason = 'Trop cher' where id = current_setting('test.q2')::uuid;
+select pg_temp.ok((select refusal_reason = 'Trop cher' and refused_at is not null from public.quotes where id = current_setting('test.q2')::uuid),
+  'refus manuel avec motif');
+select pg_temp.logout();

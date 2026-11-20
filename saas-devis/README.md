@@ -10,7 +10,7 @@ SaaS multi-tenant pour TPE/PME, artisans et freelances : devis et factures confo
 |---|-------|------|
 | 1 | Base de données, RLS et authentification | ✅ |
 | 2 | Profil entreprise, catalogue et clients | ✅ |
-| 3 | Devis + PDF (envoi, signature, facture) | ⏳ (schéma prêt) |
+| 3 | Devis + PDF (envoi, signature, facture) | ✅ (envoi email : à brancher sur Resend) |
 | 4 | Génération IA des devis | ⏳ |
 | 5 | Assistant IA et widget | ⏳ (schéma prêt) |
 | 6 | Stripe et abonnements | ⏳ (schéma prêt) |
@@ -32,6 +32,17 @@ supabase link --project-ref <ref>
 supabase db push
 ```
 
+Edge Functions et secrets (envoi des emails via Resend) :
+
+```bash
+supabase secrets set RESEND_API_KEY=re_xxx EMAIL_FROM=devis@votre-domaine.fr APP_URL=https://votre-app.netlify.app
+supabase functions deploy send-document
+```
+
+`EMAIL_FROM` doit appartenir à un domaine vérifié dans Resend. Sans cette configuration, l'application
+reste utilisable : « Copier le lien » marque le devis comme envoyé et copie le lien de signature
+(à transmettre par SMS, WhatsApp…).
+
 Dans Supabase → Authentication → URL Configuration, ajouter l'URL du site et les redirections
 `/bienvenue` et `/nouveau-mot-de-passe`.
 
@@ -45,6 +56,7 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 | `…01_tenancy.sql` | profils, entreprises, membres, invitations, offres, abonnements, usage IA, fonctions d'autorisation, `create_company()` |
 | `…02_quotes_invoices.sql` | catalogue, clients, devis, factures, numérotation `DEV-2026-001` / `FAC-2026-001`, calcul HT/TVA/TTC, signature publique, conversion en facture |
 | `…03_assistant_crm.sql` | base de connaissances, réglages assistant, conversations, messages, prospects, disponibilités, rendez-vous, Google Agenda, demandes d'avis, journal des emails, jetons push |
+| `…05_documents_editor.sql` | enregistrement atomique des lignes, duplication, facture publique, expiration, utilitaires des Edge Functions |
 | `…04_dashboard_admin_storage.sql` | `dashboard_stats()`, `current_usage()`, vues super-admin, buckets `logos` / `documents` |
 
 ### Principes de sécurité
@@ -58,9 +70,17 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 - **Accès public** (page de signature) uniquement par jeton, via des fonctions `SECURITY DEFINER` qui ne renvoient que les champs nécessaires.
 - **Widget et quotas IA** : passent par des Edge Functions (rôle service) ; `consume_ai_message()` n'est pas appelable depuis le navigateur.
 
+## Devis et factures
+
+- **Éditeur** : lignes du catalogue ou libres, sections, notes, remise par ligne et globale, acompte, totaux en direct (même algorithme que la base, qui fait foi après enregistrement).
+- **PDF** généré dans le navigateur (`@react-pdf/renderer`, chargé à la demande) aux couleurs de l'entreprise, avec mentions légales, ventilation de TVA, zone « Bon pour accord » et signature. Copie stockée dans `documents/<entreprise>/<type>/<numéro>.pdf`.
+- **Envoi** : Edge Function `send-document` (Resend) avec PDF joint et bouton vers la page publique ; ou lien copié.
+- **Page publique** `/d/<jeton>` : consultation, PDF, signature tracée au doigt, refus motivé. `/f/<jeton>` pour les factures.
+- **Factures** : conversion d'un devis accepté (acompte déjà versé déduit), numéro attribué à l'émission, encaissements partiels.
+
 ### Tests
 
-79 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
+92 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
 
 ```bash
 npm run test:db     # PGHOST / PGPORT / PGUSER configurables

@@ -11,6 +11,7 @@
     "test:db": "PGHOST=${PGHOST:-/var/tmp} PGPORT=${PGPORT:-54329} PGUSER=${PGUSER:-postgres} ./supabase/tests/run.sh"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.9.0",
     "@supabase/supabase-js": "^2.119.2",
     "lucide-react": "^1.77.0",
     "react": "^19.3.1",

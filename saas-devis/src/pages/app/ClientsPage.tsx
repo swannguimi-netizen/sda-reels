@@ -12,9 +12,10 @@ import { isValidEmail, isValidSiret } from '../../lib/validation'
 
 const FIELDS = ['type', 'name', 'company_name', 'siret', 'email', 'phone', 'address_line1', 'address_line2',
   'postal_code', 'city', 'country', 'notes'] as const
-type Draft = { id?: string } & Record<(typeof FIELDS)[number], string>
+export type ClientDraft = { id?: string } & Record<(typeof FIELDS)[number], string>
+type Draft = ClientDraft
 
-const emptyDraft = (): Draft => ({
+export const emptyClientDraft = (): Draft => ({
   type: 'particulier', name: '', company_name: '', siret: '', email: '', phone: '',
   address_line1: '', address_line2: '', postal_code: '', city: '', country: 'France', notes: '',
 })
@@ -63,14 +64,14 @@ export default function ClientsPage() {
   return (
     <>
       <PageHeader title="Clients" description="Votre fichier clients, partagé avec l’assistant IA et les devis."
-        actions={<button className="btn-primary" onClick={() => setDraft(emptyDraft())}><Plus className="h-4 w-4" /> Nouveau client</button>} />
+        actions={<button className="btn-primary" onClick={() => setDraft(emptyClientDraft())}><Plus className="h-4 w-4" /> Nouveau client</button>} />
 
       {clients === null ? (
         <div className="flex justify-center py-20"><Spinner className="h-7 w-7 text-brand-600" /></div>
       ) : clients.length === 0 ? (
         <EmptyState icon={Users} title="Aucun client pour l’instant"
           text="Ajoutez vos clients ici. Les prospects collectés par l’assistant IA viendront aussi s’y ajouter."
-          action={<button className="btn-primary" onClick={() => setDraft(emptyDraft())}><Plus className="h-4 w-4" /> Ajouter un client</button>} />
+          action={<button className="btn-primary" onClick={() => setDraft(emptyClientDraft())}><Plus className="h-4 w-4" /> Ajouter un client</button>} />
       ) : (
         <>
           <div className="mb-4 flex items-center justify-between gap-3">
