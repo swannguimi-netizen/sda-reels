@@ -18,7 +18,8 @@ SaaS multi-tenant pour TPE/PME, artisans et freelances : devis et factures confo
 | 8 | Relances automatiques | ✅ (planification pg_cron à activer) |
 | 9 | Acompte payé en ligne (Stripe Connect) | ✅ (Connect à activer dans Stripe) |
 | 10 | Prise de rendez-vous + Google Agenda | ✅ (client OAuth Google à créer) |
-| + | Avis Google, mobile Expo | ⏳ (tables prêtes) |
+| 11 | Application mobile (Expo) + notifications | ✅ (comptes Apple / Google Play et EAS à créer) |
+| + | Avis Google | ⏳ (déclenchement prêt) |
 
 ## Démarrage
 
@@ -107,6 +108,7 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 | `…10_reminders.sql` | réglages et calcul des relances dues, fuseau horaire, pause par document |
 | `…11_online_deposit.sql` | compte Stripe Connect de l'entreprise, facture d'acompte, déduction sur la facture finale |
 | `…12_appointments.sql` | rendez-vous sans chevauchement, réglages, jetons Google (serveur uniquement) |
+| `…13_notifications.sql` | notifications mobiles (triggers, anti-doublons, distribution) |
 | `…04_dashboard_admin_storage.sql` | `dashboard_stats()`, `current_usage()`, vues super-admin, buckets `logos` / `documents` |
 
 ### Principes de sécurité
@@ -190,9 +192,14 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 - **Google Agenda** : OAuth hors ligne (état signé HMAC), jetons dans le schéma `private`, chaque rendez-vous créé (assistant ou manuel) ajouté à l'agenda, retiré en cas d'annulation ; erreurs de synchronisation visibles.
 - Page `/rendez-vous` : planning (heures dans le fuseau de l'entreprise), création à partir des créneaux libres, disponibilités, connexion Google, activation pour l'assistant.
 
+## Application mobile
+
+Voir [`mobile/README.md`](mobile/README.md) : application Expo (iOS, Android) sur le même backend — devis sur le chantier avec l'IA,
+partage du lien de signature par WhatsApp/SMS, messages, notifications (devis signé, acompte, demande de devis, visiteur en attente…).
+
 ### Tests
 
-155 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
+161 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
 
 ```bash
 npm run test:db     # PGHOST / PGPORT / PGUSER configurables
