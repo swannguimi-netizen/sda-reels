@@ -627,3 +627,66 @@ select pg_temp.logout();
 select pg_temp.login('bob@exemple.gf');
 select pg_temp.ok((select count(*) = 0 from public.notification_events), 'Bob ne voit pas les notifications d''Alice');
 select pg_temp.logout();
+
+-- ---------------------------------------------------------------------
+\echo '21. Demandes d''avis Google'
+insert into auth.users (email) values ('avis@exemple.fr');
+select pg_temp.login('avis@exemple.fr');
+do $$ begin perform set_config('test.av', (select id::text from public.create_company('Avis Couverture')), false); end $$;
+update public.companies set google_review_url = 'https://g.page/r/abc/review', review_requests_enabled = true, review_delay_days = 2
+ where id = current_setting('test.av')::uuid;
+insert into public.clients (company_id, name, email) values (current_setting('test.av')::uuid, 'Lucie Bernard', 'Lucie@Client.fr');
+insert into public.quotes (company_id, client_id, title) select current_setting('test.av')::uuid, id, 'Toiture' from public.clients where name = 'Lucie Bernard';
+update public.quotes set status = 'accepted' where title = 'Toiture';
+update public.quotes set work_completed_at = now() where title = 'Toiture';
+select pg_temp.ok((select count(*) = 1 and bool_and(email = 'lucie@client.fr' and first_name = 'Lucie' and scheduled_at > now() + interval '47 hours')
+                   from public.review_requests where company_id = current_setting('test.av')::uuid), 'prestation terminée → demande programmée à J+2');
+select pg_temp.fails($$select public.request_review((select id from public.clients where name = 'Lucie Bernard'))$$, 'pas de 2e demande au même client sous 6 mois');
+select pg_temp.logout();
+
+create function pg_temp.due_av() returns setof boolean language sql as $$
+  select is_followup from public.due_review_requests(true) where company_id = current_setting('test.av')::uuid $$;
+update public.review_requests set scheduled_at = now() - interval '1 minute' where company_id = current_setting('test.av')::uuid;
+select pg_temp.ok((select array_agg(f) = '{false}' from pg_temp.due_av() f), 'demande due (essai Premium)');
+do $$ begin perform public.mark_review_sent((select id from public.review_requests where company_id = current_setting('test.av')::uuid), false); end $$;
+select pg_temp.ok((select count(*) = 0 from pg_temp.due_av()), 'envoyée : plus due');
+update public.review_requests set sent_at = now() - interval '6 days' where company_id = current_setting('test.av')::uuid;
+select pg_temp.ok((select array_agg(f) = '{true}' from pg_temp.due_av() f), 'sans clic après 5 jours : relance');
+do $$ begin perform public.mark_review_sent((select id from public.review_requests where company_id = current_setting('test.av')::uuid), true); end $$;
+select pg_temp.ok((select count(*) = 0 from pg_temp.due_av()), 'une seule relance');
+
+do $$ begin perform set_config('test.rv_token', (select token::text from public.review_requests where company_id = current_setting('test.av')::uuid), false); end $$;
+set role anon;
+select pg_temp.ok((select p ->> 'first_name' = 'Lucie' and p ->> 'google_review_url' = 'https://g.page/r/abc/review' from public.get_review_page(current_setting('test.rv_token')::uuid) p),
+  'page publique : prénom et lien Google');
+select pg_temp.ok(public.record_review_click(current_setting('test.rv_token')::uuid) = 'https://g.page/r/abc/review', 'clic enregistré, redirection vers Google');
+do $$ begin perform public.submit_review_feedback(current_setting('test.rv_token')::uuid, 'Chantier très propre, merci !'); end $$;
+select pg_temp.fails($$select public.submit_review_feedback(current_setting('test.rv_token')::uuid, 'encore')$$, 'une seule remarque privée');
+reset role;
+select pg_temp.ok((select status = 'clicked' and private_feedback like 'Chantier%' from public.review_requests where company_id = current_setting('test.av')::uuid),
+  'clic et remarque privée enregistrés');
+select pg_temp.ok((select count(*) = 1 from public.notification_events where company_id = current_setting('test.av')::uuid and kind = 'review_feedback'),
+  'remarque privée notifiée à l''entreprise');
+
+-- Facture payée : déclenchement pour un autre client ; offre sans la fonctionnalité
+select pg_temp.login('avis@exemple.fr');
+insert into public.clients (company_id, name, email) values (current_setting('test.av')::uuid, 'Marc Petit', 'marc@client.fr');
+insert into public.invoices (company_id, client_id) select current_setting('test.av')::uuid, id from public.clients where name = 'Marc Petit';
+insert into public.invoice_items (invoice_id, company_id, description, unit_price) select id, company_id, 'x', 100 from public.invoices where company_id = current_setting('test.av')::uuid;
+update public.invoices set status = 'issued' where company_id = current_setting('test.av')::uuid;
+update public.invoices set amount_paid = 120 where company_id = current_setting('test.av')::uuid;
+select pg_temp.ok((select count(*) = 1 from public.review_requests r join public.clients c on c.id = r.client_id where c.name = 'Marc Petit'),
+  'facture payée → demande programmée');
+select pg_temp.ok((select (s ->> 'sent')::int = 1 and (s ->> 'clicked')::int = 1 and (s ->> 'scheduled')::int = 1
+                   from public.review_stats(current_setting('test.av')::uuid) s), 'statistiques');
+select pg_temp.logout();
+update public.subscriptions set status = 'active', plan_id = 'business' where company_id = current_setting('test.av')::uuid;
+update public.review_requests set scheduled_at = now() - interval '1 minute' where company_id = current_setting('test.av')::uuid and status = 'scheduled';
+select pg_temp.ok((select count(*) = 0 from pg_temp.due_av()), 'offre Business : aucune demande d''avis envoyée');
+select pg_temp.login('avis@exemple.fr');
+insert into public.clients (company_id, name, email) values (current_setting('test.av')::uuid, 'Nina', 'nina@client.fr');
+select pg_temp.fails($$select public.request_review((select id from public.clients where name = 'Nina'))$$, 'demande manuelle réservée à Premium');
+select pg_temp.logout();
+select pg_temp.login('bob@exemple.gf');
+select pg_temp.fails($$select public.request_review((select id from public.clients where name = 'Nina'))$$, 'Bob ne sollicite pas les clients des autres');
+select pg_temp.logout();

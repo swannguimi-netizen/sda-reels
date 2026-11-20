@@ -98,6 +98,14 @@ export default function QuoteDetail() {
         </View>
       )}
 
+      {q.status === 'accepted' && !q.work_completed_at && (
+        <Button title="Prestation terminée" onPress={() => Alert.alert('Prestation terminée ?', 'Une demande d’avis Google partira automatiquement vers le client si l’option est activée.', [
+          { text: 'Annuler', style: 'cancel' },
+          { text: 'Confirmer', onPress: () => run('done', async () => { await supabase.from('quotes').update({ work_completed_at: new Date().toISOString() }).eq('id', q.id) }) },
+        ])} loading={busy === 'done'} icon={<Icon ios="checkmark.seal.fill" android="verified" color="#fff" />} />
+      )}
+      {q.work_completed_at && <Text style={[s.muted, { textAlign: 'center' }]}>Prestation terminée le {dateFr(q.work_completed_at)}</Text>}
+
       <SectionTitle>Détail</SectionTitle>
       <Card style={{ padding: 0 }}>
         {items.map((it, i) => (

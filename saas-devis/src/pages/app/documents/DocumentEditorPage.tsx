@@ -563,7 +563,7 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
             <button className="btn-secondary" onClick={() => updateStatus({ work_completed_at: new Date().toISOString() }, 'Prestation marquée terminée')}>
               <Hammer className="h-4 w-4" /> Prestation terminée
             </button>
-          ) : <span className="text-sm text-emerald-700">Prestation terminée le {dateFr(quote.work_completed_at)}</span>}
+          ) : <span className="text-sm text-emerald-700">Prestation terminée le {dateFr(quote.work_completed_at)}{(details as unknown as { review_requests_enabled?: boolean }).review_requests_enabled ? ' · demande d’avis Google programmée' : ''}</span>}
         </div>
       )
     }

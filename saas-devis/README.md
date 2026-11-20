@@ -19,7 +19,7 @@ SaaS multi-tenant pour TPE/PME, artisans et freelances : devis et factures confo
 | 9 | Acompte payé en ligne (Stripe Connect) | ✅ (Connect à activer dans Stripe) |
 | 10 | Prise de rendez-vous + Google Agenda | ✅ (client OAuth Google à créer) |
 | 11 | Application mobile (Expo) + notifications | ✅ (comptes Apple / Google Play et EAS à créer) |
-| + | Avis Google | ⏳ (déclenchement prêt) |
+| 12 | Demandes d'avis Google | ✅ |
 
 ## Démarrage
 
@@ -109,6 +109,7 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 | `…11_online_deposit.sql` | compte Stripe Connect de l'entreprise, facture d'acompte, déduction sur la facture finale |
 | `…12_appointments.sql` | rendez-vous sans chevauchement, réglages, jetons Google (serveur uniquement) |
 | `…13_notifications.sql` | notifications mobiles (triggers, anti-doublons, distribution) |
+| `…14_reviews.sql` | demandes d'avis : programmation, relance, page publique, remarques privées, statistiques |
 | `…04_dashboard_admin_storage.sql` | `dashboard_stats()`, `current_usage()`, vues super-admin, buckets `logos` / `documents` |
 
 ### Principes de sécurité
@@ -197,9 +198,16 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 Voir [`mobile/README.md`](mobile/README.md) : application Expo (iOS, Android) sur le même backend — devis sur le chantier avec l'IA,
 partage du lien de signature par WhatsApp/SMS, messages, notifications (devis signé, acompte, demande de devis, visiteur en attente…).
 
+## Demandes d'avis Google (offre Premium)
+
+- **Déclenchement** : prestation marquée terminée (web ou mobile) ou facture payée ; envoi le lendemain par défaut (réglable), en heures ouvrées locales ; **une relance** après 5 jours sans clic ; **au plus une demande par client tous les 6 mois** ; demande manuelle possible.
+- **Conforme aux règles de Google** : aucun filtrage des avis (pas de « note d'abord, Google seulement si 4-5 étoiles ») ; la page `/avis/<jeton>` propose à tous le même bouton vers la fiche Google, et en option une remarque privée transmise à l'entreprise (notification).
+- Page `/avis` : lien de la fiche (vérifié, aide pour le trouver), délai, relance, message personnalisé (`{prenom}`, `{entreprise}`) avec aperçu exact, statistiques (envoyées, clics, remarques), historique.
+- Envoi par l'Edge Function `send-reminders` (même planification horaire que les relances).
+
 ### Tests
 
-161 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
+177 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
 
 ```bash
 npm run test:db     # PGHOST / PGPORT / PGUSER configurables

@@ -10,6 +10,7 @@ import { corsHeaders, json } from '../_shared/cors.ts'
 import { adminClient, SUPABASE_URL, userClient } from '../_shared/supabase.ts'
 import { emailLayout, sendEmail } from '../_shared/email.ts'
 import { renderReminder, type ReminderVars } from '../_shared/reminders.ts'
+import { renderReviewRequest } from '../_shared/reviews.ts'
 
 const APP_URL = (Deno.env.get('APP_URL') ?? '').replace(/\/$/, '')
 const CRON_SECRET = Deno.env.get('CRON_SECRET')
@@ -56,12 +57,24 @@ Deno.serve(async (req) => {
         const r = await sendOne(admin, d, `${d.doc_type}_reminder_${d.rank}`)
         results[r]++
       }
-      console.log('Relances', results)
-      return json(results)
+      // Demandes d'avis Google (même planification horaire)
+      const { data: reviews } = await admin.rpc('due_review_requests', { p_ignore_hours: false })
+      const reviewResults = { sent: 0, failed: 0 }
+      for (const r of (reviews ?? []) as ReviewDue[]) reviewResults[(await sendReview(admin, r)) ? 'sent' : 'failed']++
+      console.log('Relances', results, 'Avis', reviewResults)
+      return json({ ...results, reviews: reviewResults })
     }
 
     // ---------------------------------------------------------- mode manuel
-    const { type, id } = await req.json()
+    const { type, id, review_id: reviewId } = await req.json()
+    if (typeof reviewId === 'string') {
+      // Demande d'avis créée depuis l'application (request_review) : envoi immédiat
+      const user = userClient(req)
+      const { data: r } = await user.from('review_requests').select('id, company_id, email, first_name, token, status').eq('id', reviewId).single()
+      if (!r || r.status !== 'scheduled') return json({ error: 'Demande d’avis introuvable ou déjà envoyée.' }, 404)
+      const ok = await sendReview(admin, { id: r.id, company_id: r.company_id, email: r.email, first_name: r.first_name, token: r.token, is_followup: false })
+      return ok ? json({ ok: true }) : json({ error: 'L’envoi a échoué. Vérifiez la configuration des emails.' }, 502)
+    }
     if (!['quote', 'invoice'].includes(type) || typeof id !== 'string') return json({ error: 'Requête invalide' }, 400)
     const user = userClient(req)
     const table = type === 'quote' ? 'quotes' : 'invoices'
@@ -156,5 +169,35 @@ async function sendOne(admin: Admin, d: Due, kind: string): Promise<'sent' | 'sk
     // On libère la réservation : la relance sera retentée à la prochaine exécution
     await admin.from('email_logs').delete().eq('id', log.id)
     return 'failed'
+  }
+}
+
+interface ReviewDue { id: string; company_id: string; email: string; first_name: string | null; token: string; is_followup: boolean }
+
+async function sendReview(admin: Admin, r: ReviewDue): Promise<boolean> {
+  try {
+    let company = companyCache.get(r.company_id)
+    if (!company) {
+      const { data } = await admin.from('companies').select('*').eq('id', r.company_id).single()
+      company = data as Record<string, string | null>
+      companyCache.set(r.company_id, company)
+    }
+    const msg = renderReviewRequest({ firstName: r.first_name, company: company.name!, followup: r.is_followup, custom: company.review_message })
+    const sent = await sendEmail({
+      fromName: company.name!, to: r.email, replyTo: company.email, subject: msg.subject,
+      html: emailLayout({
+        companyName: company.name!, color: company.brand_color ?? '#4f46e5',
+        logoUrl: company.logo_path ? `${SUPABASE_URL}/storage/v1/object/public/logos/${company.logo_path}` : null,
+        bodyText: msg.body, button: { label: msg.button, url: `${APP_URL}/avis/${r.token}` },
+        footer: [company.name, company.city].filter(Boolean).join(' · '),
+      }),
+    })
+    await admin.rpc('mark_review_sent', { p_id: r.id, p_followup: r.is_followup })
+    await admin.from('email_logs').insert({ company_id: r.company_id, kind: r.is_followup ? 'review_followup' : 'review_request', to_email: r.email, subject: msg.subject, provider_id: sent.id })
+    await admin.rpc('increment_email_usage', { p_company_id: r.company_id })
+    return true
+  } catch (e) {
+    console.error('Demande d’avis non envoyée', r.id, (e as Error).message)
+    return false
   }
 }

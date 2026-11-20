@@ -23,6 +23,8 @@ import AdminPage from './pages/app/AdminPage'
 import RemindersPage from './pages/app/RemindersPage'
 import PaymentsPage from './pages/app/PaymentsPage'
 import AppointmentsPage from './pages/app/AppointmentsPage'
+import ReviewsPage from './pages/app/ReviewsPage'
+import ReviewPage from './pages/public/ReviewPage'
 import PricingPage from './pages/public/PricingPage'
 import { isSupabaseConfigured } from './lib/supabase'
 
@@ -57,6 +59,7 @@ export default function App() {
           <Route path="/f/:token" element={<PublicDocumentPage type="invoice" />} />
           <Route path="/chat/:key" element={<PublicChatPage />} />
           <Route path="/tarifs" element={<PricingPage />} />
+          <Route path="/avis/:token" element={<ReviewPage />} />
           <Route element={<RequireSession />}>
             <Route path="/bienvenue" element={<OnboardingPage />} />
           </Route>
@@ -77,6 +80,7 @@ export default function App() {
               <Route path="/relances" element={<RemindersPage />} />
               <Route path="/paiements" element={<PaymentsPage />} />
               <Route path="/rendez-vous" element={<AppointmentsPage />} />
+              <Route path="/avis" element={<ReviewsPage />} />
               <Route element={<RequirePlatformAdmin />}>
                 <Route path="/admin" element={<AdminPage />} />
               </Route>
