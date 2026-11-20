@@ -23,3 +23,17 @@ select cron.schedule('relances-automatiques', '7 * * * *', $$
 $$);
 
 -- Vérifier : select * from cron.job_run_details order by start_time desc limit 10;
+
+-- ---------------------------------------------------------------------
+-- Notifications de l'application mobile : distribution chaque minute
+select vault.create_secret('https://<PROJET>.supabase.co/functions/v1/push-dispatch', 'push_url');
+select cron.schedule('notifications-mobile', '* * * * *', $$
+  select net.http_post(
+    url     := (select decrypted_secret from vault.decrypted_secrets where name = 'push_url'),
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'reminders_cron_secret')),
+    body    := '{}'::jsonb,
+    timeout_milliseconds := 30000
+  );
+$$);

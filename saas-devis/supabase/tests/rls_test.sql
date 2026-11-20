@@ -599,3 +599,31 @@ do $$ begin perform public.google_token_set(current_setting('test.alice_company'
 do $$ begin perform public.google_token_set(current_setting('test.alice_company')::uuid, null, 'at_2', now() + interval '1 hour'); end $$;
 select pg_temp.ok((select refresh_token = 'rt_1' and access_token = 'at_2' from public.google_token_get(current_setting('test.alice_company')::uuid)),
   'rafraîchissement du jeton : le refresh token est conservé');
+
+-- ---------------------------------------------------------------------
+\echo '20. Notifications'
+insert into public.push_tokens (token, user_id, platform)
+select 'ExponentPushToken[alice]', id, 'ios' from auth.users where email = 'alice@exemple.fr';
+do $$ begin perform set_config('test.q_notif', (select public_token::text from public.quotes where company_id = current_setting('test.alice_company')::uuid and status = 'draft' limit 1), false); end $$;
+-- Devis envoyé puis signé par le client
+update public.quotes set status = 'sent' where public_token = current_setting('test.q_notif')::uuid;
+set role anon;
+select public.sign_quote(current_setting('test.q_notif')::uuid, 'Paul Durand', 'data:image/png;base64,iVBORw0KGgo=') is not null as s \gset
+reset role;
+select pg_temp.ok((select count(*) = 1 and bool_and(title = 'Devis signé ✍️' and url like '/devis/%')
+                   from public.notification_events where kind = 'quote_accepted' and body like 'Paul Durand a accepté le devis DEV-%'), 'devis signé → notification');
+select pg_temp.ok((select tokens = '{ExponentPushToken[alice]}' from public.pending_notifications() where body like 'Paul Durand%'),
+  'distribution aux jetons des membres de l''entreprise');
+-- Message d'un visiteur en mode humain : une seule notification par tranche de 10 minutes
+insert into public.messages (conversation_id, company_id, role, content)
+select id, company_id, 'visitor', 'Vous êtes là ?' from public.conversations where company_id = current_setting('test.alice_company')::uuid and mode = 'human' limit 1;
+insert into public.messages (conversation_id, company_id, role, content)
+select id, company_id, 'visitor', 'Allô ?' from public.conversations where company_id = current_setting('test.alice_company')::uuid and mode = 'human' limit 1;
+select pg_temp.ok((select count(*) = 1 from public.notification_events where kind = 'visitor_message'), 'messages en rafale : une seule notification');
+select pg_temp.login('alice@exemple.fr');
+select pg_temp.ok((select count(*) >= 2 from public.notification_events), 'Alice voit ses notifications');
+select pg_temp.fails($$select * from public.pending_notifications()$$, 'distribution réservée au serveur');
+select pg_temp.logout();
+select pg_temp.login('bob@exemple.gf');
+select pg_temp.ok((select count(*) = 0 from public.notification_events), 'Bob ne voit pas les notifications d''Alice');
+select pg_temp.logout();

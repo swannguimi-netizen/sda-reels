@@ -30,3 +30,7 @@ verify_jwt = false
 # Retour OAuth de Google (GET) : JWT vérifié dans la fonction pour les actions POST
 [functions.google-calendar]
 verify_jwt = false
+
+# Appelée par pg_cron (en-tête x-cron-secret)
+[functions.push-dispatch]
+verify_jwt = false
