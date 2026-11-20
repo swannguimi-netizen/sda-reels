@@ -471,3 +471,63 @@ select pg_temp.login('alice@exemple.fr');
 select pg_temp.fails($$select public.admin_extend_trial(current_setting('test.alice_company')::uuid, 30)$$, 'un client ne prolonge pas son propre essai');
 select pg_temp.fails($$select public.admin_platform_stats()$$, 'statistiques plateforme réservées');
 select pg_temp.logout();
+
+-- ---------------------------------------------------------------------
+\echo '17. Relances automatiques'
+-- Entreprise de test : abonnement Pro actif, client avec email
+insert into auth.users (email) values ('relance@exemple.fr');
+select pg_temp.login('relance@exemple.fr');
+do $$ begin perform set_config('test.rc', (select id::text from public.create_company('Relance SAS')), false); end $$;
+update public.companies set postal_code = '97300' where id = current_setting('test.rc')::uuid;
+select pg_temp.ok((select timezone = 'America/Cayenne' from public.companies where id = current_setting('test.rc')::uuid), 'fuseau déduit du code postal (Guyane)');
+update public.companies set quote_reminder_days = '{7,3,3,0}' where id = current_setting('test.rc')::uuid;
+select pg_temp.ok((select quote_reminder_days = '{3,7}' from public.companies where id = current_setting('test.rc')::uuid), 'délais triés, dédoublonnés, bornés');
+select pg_temp.fails($$update public.companies set timezone = 'Mars/Olympus' where id = current_setting('test.rc')::uuid$$, 'fuseau inconnu refusé');
+insert into public.clients (company_id, name, email) values (current_setting('test.rc')::uuid, 'Client Relancé', 'client@relance.fr');
+insert into public.quotes (company_id, client_id, title) select current_setting('test.rc')::uuid, id, 'Q' from public.clients where name = 'Client Relancé';
+insert into public.quote_items (quote_id, company_id, description, unit_price) select id, company_id, 'x', 100 from public.quotes where title = 'Q';
+update public.quotes set status = 'sent' where title = 'Q';
+insert into public.invoices (company_id, client_id) select current_setting('test.rc')::uuid, id from public.clients where name = 'Client Relancé';
+insert into public.invoice_items (invoice_id, company_id, description, unit_price) select id, company_id, 'x', 500 from public.invoices where company_id = current_setting('test.rc')::uuid;
+update public.invoices set status = 'issued' where company_id = current_setting('test.rc')::uuid;
+select pg_temp.logout();
+update public.subscriptions set status = 'active', plan_id = 'pro' where company_id = current_setting('test.rc')::uuid;
+
+create function pg_temp.due(t text) returns setof integer language sql as $$
+  select rank from public.due_reminders(true) where company_id = current_setting('test.rc')::uuid and doc_type = t $$;
+
+select pg_temp.ok((select count(*) = 0 from pg_temp.due('quote')), 'devis envoyé aujourd''hui : pas encore de relance');
+update public.quotes set sent_at = now() - interval '3 days 1 hour' where title = 'Q';
+select pg_temp.ok((select array_agg(r) = '{1}' from pg_temp.due('quote') r), 'J+3 : 1re relance due');
+do $$ begin perform public.record_reminder('quote', (select id from public.quotes where title = 'Q')); end $$;
+select pg_temp.ok((select count(*) = 0 from pg_temp.due('quote')), 'relance enregistrée : plus due');
+update public.quotes set sent_at = now() - interval '7 days 1 hour' where title = 'Q';
+select pg_temp.ok((select array_agg(r) = '{2}' from pg_temp.due('quote') r), 'J+7 : 2e relance due');
+do $$ begin perform public.record_reminder('quote', (select id from public.quotes where title = 'Q')); end $$;
+update public.quotes set sent_at = now() - interval '20 days' where title = 'Q';
+select pg_temp.ok((select count(*) = 0 from pg_temp.due('quote')), 'au plus 2 relances par devis');
+
+update public.invoices set due_date = current_date - 1 where company_id = current_setting('test.rc')::uuid;
+select pg_temp.ok((select array_agg(r) = '{1}' from pg_temp.due('invoice') r), 'facture échue depuis 1 jour : relance 1');
+select pg_temp.login('relance@exemple.fr');
+update public.invoices set reminders_paused = true where company_id = current_setting('test.rc')::uuid;
+select pg_temp.logout();
+select pg_temp.ok((select count(*) = 0 from pg_temp.due('invoice')), 'relances en pause sur cette facture');
+update public.invoices set reminders_paused = false where company_id = current_setting('test.rc')::uuid;
+update public.invoices set amount_paid = 600 where company_id = current_setting('test.rc')::uuid;
+select pg_temp.ok((select count(*) = 0 from pg_temp.due('invoice')), 'facture payée : plus de relance');
+
+-- Offre sans relances automatiques
+update public.quotes set reminder_count = 0, sent_at = now() - interval '4 days' where title = 'Q';
+update public.subscriptions set plan_id = 'starter' where company_id = current_setting('test.rc')::uuid;
+select pg_temp.ok((select count(*) = 0 from pg_temp.due('quote')), 'Starter : pas de relance automatique');
+update public.subscriptions set plan_id = 'pro' where company_id = current_setting('test.rc')::uuid;
+select pg_temp.ok((select count(*) = 1 from pg_temp.due('quote')), 'Pro : relance automatique');
+select pg_temp.ok((select count(*) = 0 from public.due_reminders(false) d, public.companies c
+                   where c.id = d.company_id and c.id = current_setting('test.rc')::uuid
+                     and not (extract(isodow from now() at time zone c.timezone) < 7 and extract(hour from now() at time zone c.timezone) between 9 and 17))
+  , 'hors heures ouvrées locales : rien n''est envoyé');
+select pg_temp.login('relance@exemple.fr');
+select pg_temp.fails($$select * from public.due_reminders(true)$$, 'liste des relances réservée au serveur');
+select pg_temp.fails($$select public.record_reminder('quote', gen_random_uuid())$$, 'enregistrement réservé au serveur');
+select pg_temp.logout();

@@ -15,3 +15,7 @@ verify_jwt = true
 # Appelé par Stripe : authentifié par la signature du webhook
 [functions.stripe-webhook]
 verify_jwt = false
+
+# Appelée par pg_cron (en-tête x-cron-secret) ou par l'application (JWT vérifié dans la fonction)
+[functions.send-reminders]
+verify_jwt = false

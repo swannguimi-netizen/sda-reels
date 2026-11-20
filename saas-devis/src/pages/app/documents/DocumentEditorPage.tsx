@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, Ban, HelpCircle, Check, CheckCircle2, Copy, Download, Eye, FileCheck2, Hammer, Link2, Mail, Plus, Receipt,
-  Save, Send, Sparkles, Trash2, Wallet, XCircle,
+  BellRing, Save, Send, Sparkles, Trash2, Wallet, XCircle,
 } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
 import { useAuth } from '../../../contexts/AuthContext'
@@ -24,6 +24,7 @@ import { TABLE, buildAndStorePdf, loadCompany, loadDocument, publicLink, sendByE
 import type { Client, CompanyDetails, Product } from '../../../lib/types'
 import { VAT_REGIME_LABELS } from '../../../lib/types'
 import { dateFr, dbError, eur } from '../../../lib/format'
+import { invokeFunction } from '../../../lib/functions'
 import { isValidEmail } from '../../../lib/validation'
 
 interface FormState {
@@ -478,6 +479,7 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
             </dl>
           </section>
 
+          {doc && remindersCard()}
           {doc && timeline()}
         </aside>
       </div>
@@ -579,6 +581,54 @@ export default function DocumentEditorPage({ type }: { type: DocType }) {
       return <div className="mb-6"><Alert kind="success">Payée le {dateFr(invoice.paid_at)}.</Alert></div>
     }
     return null
+  }
+
+  function remindersCard() {
+    const eligible = (isQuote && doc!.status === 'sent') || (!isQuote && doc!.status === 'issued')
+    if (!eligible) return null
+    const enabled = isQuote ? details!.quote_reminders_enabled : details!.invoice_reminders_enabled
+    const days = isQuote ? details!.quote_reminder_days : details!.invoice_reminder_days
+    const nextDay = days?.[doc!.reminder_count]
+    const base = isQuote ? doc!.sent_at : invoice!.due_date ? `${invoice!.due_date}T09:00:00` : null
+    const next = nextDay !== undefined && base ? new Date(new Date(base).getTime() + nextDay * 86_400_000) : null
+    const hasEmail = !!(client?.email ?? doc!.client_snapshot?.email)
+
+    async function remindNow() {
+      if (!confirm('Envoyer une relance au client maintenant ?')) return
+      setBusy('remind')
+      try {
+        await invokeFunction('send-reminders', { type, id: doc!.id }, 'La relance n’a pas pu être envoyée.')
+        toast('success', 'Relance envoyée')
+        load()
+      } catch (e) {
+        toast('error', (e as Error).message)
+      }
+      setBusy(null)
+    }
+
+    return (
+      <section className="card p-5">
+        <h2 className="mb-2 flex items-center gap-1.5 font-semibold text-slate-900"><BellRing className="h-4 w-4 text-slate-400" /> Relances</h2>
+        <p className="text-sm text-slate-600">
+          {!hasEmail ? 'Pas d’email client : relance automatique impossible.'
+            : !enabled ? <>Relances automatiques désactivées (<Link to="/relances" className="text-brand-600 underline">réglages</Link>).</>
+            : doc!.reminders_paused ? 'Relances automatiques en pause pour ce document.'
+            : next ? <>Prochaine relance automatique : <strong>{next < new Date() ? 'au prochain créneau ouvré' : dateFr(next.toISOString())}</strong></>
+            : 'Toutes les relances prévues ont été envoyées.'}
+        </p>
+        {doc!.reminder_count > 0 && <p className="mt-1 text-xs text-slate-500">{doc!.reminder_count} relance{doc!.reminder_count > 1 ? 's' : ''} envoyée{doc!.reminder_count > 1 ? 's' : ''}, la dernière le {dateFr(doc!.last_reminder_at)}</p>}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button className="btn-secondary px-3 py-1.5" onClick={remindNow} disabled={!!busy || !hasEmail}>
+            {busy === 'remind' ? <Spinner className="h-4 w-4" /> : <Send className="h-4 w-4" />} Relancer maintenant
+          </button>
+          {enabled && hasEmail && (
+            <button className="btn-secondary px-3 py-1.5" onClick={() => updateStatus({ reminders_paused: !doc!.reminders_paused }, doc!.reminders_paused ? 'Relances réactivées' : 'Relances mises en pause')}>
+              {doc!.reminders_paused ? 'Réactiver' : 'Mettre en pause'}
+            </button>
+          )}
+        </div>
+      </section>
+    )
   }
 
   function timeline() {

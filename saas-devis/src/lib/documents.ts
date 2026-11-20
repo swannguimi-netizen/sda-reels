@@ -36,6 +36,9 @@ interface DocBase {
   sent_at: string | null
   pdf_path: string | null
   created_at: string
+  reminder_count: number
+  last_reminder_at: string | null
+  reminders_paused: boolean
 }
 
 export interface Quote extends DocBase {

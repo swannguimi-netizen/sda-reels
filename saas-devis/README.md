@@ -15,7 +15,8 @@ SaaS multi-tenant pour TPE/PME, artisans et freelances : devis et factures confo
 | 5 | Assistant IA et widget | ✅ (clé API Claude à brancher) |
 | 6 | Stripe et abonnements | ✅ (clés Stripe à brancher) |
 | 7 | Tableau de bord et admin | ✅ |
-| + | Relances, acompte, rendez-vous, avis Google, mobile Expo | ⏳ (tables prêtes) |
+| 8 | Relances automatiques | ✅ (planification pg_cron à activer) |
+| + | Acompte, rendez-vous, avis Google, mobile Expo | ⏳ (tables prêtes) |
 
 ## Démarrage
 
@@ -54,6 +55,14 @@ supabase functions deploy stripe-webhook --no-verify-jwt   # Stripe → Webhooks
 reste utilisable : « Copier le lien » marque le devis comme envoyé et copie le lien de signature
 (à transmettre par SMS, WhatsApp…).
 
+Relances automatiques : déployer la fonction puis planifier l'appel horaire.
+
+```bash
+supabase secrets set CRON_SECRET=$(openssl rand -hex 24)
+supabase functions deploy send-reminders --no-verify-jwt
+# puis exécuter supabase/cron.sql dans l'éditeur SQL (URL du projet + même CRON_SECRET)
+```
+
 Dans Supabase → Authentication → URL Configuration, ajouter l'URL du site et les redirections
 `/bienvenue` et `/nouveau-mot-de-passe`.
 
@@ -72,6 +81,7 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 | `…07_assistant.sql` | demandes de devis de l'assistant, conversion prospect → client, statut du prospect piloté par les devis |
 | `…08_billing.sql` | 4 offres, fonctionnalités par offre, blocage si abonnement inactif, événements Stripe |
 | `…09_admin.sql` | vue super-admin enrichie, statistiques plateforme, prolongation d'essai |
+| `…10_reminders.sql` | réglages et calcul des relances dues, fuseau horaire, pause par document |
 | `…04_dashboard_admin_storage.sql` | `dashboard_stats()`, `current_usage()`, vues super-admin, buckets `logos` / `documents` |
 
 ### Principes de sécurité
@@ -131,9 +141,18 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 - **Tableau de bord** : CA signé du mois (évolution vs mois précédent), devis en attente, taux d'acceptation (90 j), impayés ; histogramme du CA signé sur 6 mois (accessible : infobulle au survol et au clavier, vue tableau) ; liste **« À faire »** priorisée (demandes de devis de l'assistant, conversations à traiter, factures en retard, devis à relancer après 3 jours en précisant s'ils ont été ouverts) ; dernières conversations et derniers devis ; check-list de démarrage qui se coche toute seule.
 - **Super-admin** (`/admin`, `profiles.is_platform_admin`) : MRR et répartition par offre, inscriptions sur 6 mois, essais (dont ceux qui finissent sous 7 jours), impayés, messages IA et coût estimé ; table des entreprises filtrable (payants, essai, fin d'essai, impayés, inactifs), assistant installé ou non, dernière activité ; **prolongation d'essai** (+7 / +30 jours) et **export CSV** (compatible Excel).
 
+## Relances automatiques (offres Pro et plus)
+
+- **Devis sans réponse** : relances à J+3 et J+7 après l'envoi (réglables, 3 au plus), tant que le devis n'est ni signé, ni refusé, ni expiré. La 1re relance s'adapte : « Avez-vous pu en prendre connaissance ? » si le client n'a pas ouvert le devis, « Avez-vous des questions ? » s'il l'a ouvert.
+- **Factures impayées** : J+1, J+7, J+15 après l'échéance (4 au plus), ton progressif — rappel courtois, puis ferme, puis dernier rappel avec les pénalités de retard.
+- **Heures ouvrées locales** : du lundi au samedi, 9 h–18 h, dans le fuseau de l'entreprise (déduit du code postal : Guyane, Antilles, Réunion, Mayotte…).
+- Textes personnalisables avec variables (`{client}`, `{numero}`, `{montant}`…) et aperçu exact (module partagé `supabase/functions/_shared/reminders.ts`) ; PDF joint ; pause par document ; bouton « Relancer maintenant ».
+- Page `/relances` : réglages, aperçu, prochaines relances, historique.
+- Sécurité et fiabilité : `due_reminders()` / `record_reminder()` réservées au serveur, appel planifié authentifié par `CRON_SECRET` (Vault), réservation dans `email_logs` + index uniques → jamais deux fois la même relance, même en cas d'exécutions concurrentes ; en cas d'échec d'envoi, la relance est retentée à l'heure suivante.
+
 ### Tests
 
-122 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
+138 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
 
 ```bash
 npm run test:db     # PGHOST / PGPORT / PGUSER configurables

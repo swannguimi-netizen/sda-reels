@@ -59,6 +59,11 @@ export interface CompanyDetails extends Company {
   invoice_due_days: number
   deposit_percent: number
   google_review_url: string | null
+  quote_reminders_enabled: boolean
+  quote_reminder_days: number[]
+  invoice_reminders_enabled: boolean
+  invoice_reminder_days: number[]
+  timezone: string
 }
 
 export interface Product {
