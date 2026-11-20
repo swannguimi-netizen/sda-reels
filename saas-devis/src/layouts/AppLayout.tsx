@@ -188,9 +188,9 @@ function TrialBanner() {
   } else if (usage.status === 'past_due' || usage.status === 'unpaid') {
     tone = 'bg-red-600 text-white'
     text = 'Le dernier paiement a échoué : mettez à jour votre carte pour éviter la suspension.'
-  } else if (usage.status === 'trialing' && !usage.has_stripe && left <= 7) {
+  } else if (usage.status === 'trialing' && !usage.has_stripe && usage.trial_ends_at && left <= 7) {
     tone = 'bg-amber-100 text-amber-900'
-    text = `Plus que ${left} jour${left > 1 ? 's' : ''} d’essai gratuit.`
+    text = left <= 1 ? 'Dernier jour de votre essai gratuit.' : `Plus que ${left} jours d’essai gratuit.`
   } else return null
   return (
     <div className={`flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 py-2 text-center text-sm ${tone}`}>

@@ -14,7 +14,7 @@ SaaS multi-tenant pour TPE/PME, artisans et freelances : devis et factures confo
 | 4 | Génération IA des devis | ✅ (clé API Claude à brancher) |
 | 5 | Assistant IA et widget | ✅ (clé API Claude à brancher) |
 | 6 | Stripe et abonnements | ✅ (clés Stripe à brancher) |
-| 7 | Tableau de bord et admin | ⏳ (fonctions SQL prêtes) |
+| 7 | Tableau de bord et admin | ✅ |
 | + | Relances, acompte, rendez-vous, avis Google, mobile Expo | ⏳ (tables prêtes) |
 
 ## Démarrage
@@ -71,6 +71,7 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 | `…06_ai.sql` | journal des générations IA |
 | `…07_assistant.sql` | demandes de devis de l'assistant, conversion prospect → client, statut du prospect piloté par les devis |
 | `…08_billing.sql` | 4 offres, fonctionnalités par offre, blocage si abonnement inactif, événements Stripe |
+| `…09_admin.sql` | vue super-admin enrichie, statistiques plateforme, prolongation d'essai |
 | `…04_dashboard_admin_storage.sql` | `dashboard_stats()`, `current_usage()`, vues super-admin, buckets `logos` / `documents` |
 
 ### Principes de sécurité
@@ -125,9 +126,14 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 - `stripe-webhook` : signature vérifiée, idempotence (`stripe_events`), synchronisation de l'offre et du statut.
 - Page publique `/tarifs`.
 
+## Tableau de bord et super-admin
+
+- **Tableau de bord** : CA signé du mois (évolution vs mois précédent), devis en attente, taux d'acceptation (90 j), impayés ; histogramme du CA signé sur 6 mois (accessible : infobulle au survol et au clavier, vue tableau) ; liste **« À faire »** priorisée (demandes de devis de l'assistant, conversations à traiter, factures en retard, devis à relancer après 3 jours en précisant s'ils ont été ouverts) ; dernières conversations et derniers devis ; check-list de démarrage qui se coche toute seule.
+- **Super-admin** (`/admin`, `profiles.is_platform_admin`) : MRR et répartition par offre, inscriptions sur 6 mois, essais (dont ceux qui finissent sous 7 jours), impayés, messages IA et coût estimé ; table des entreprises filtrable (payants, essai, fin d'essai, impayés, inactifs), assistant installé ou non, dernière activité ; **prolongation d'essai** (+7 / +30 jours) et **export CSV** (compatible Excel).
+
 ### Tests
 
-115 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
+122 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
 
 ```bash
 npm run test:db     # PGHOST / PGPORT / PGUSER configurables

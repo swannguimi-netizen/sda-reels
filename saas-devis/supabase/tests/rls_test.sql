@@ -453,3 +453,21 @@ reset role;
 select pg_temp.login('nouveau@exemple.fr');
 select pg_temp.fails($$select * from public.stripe_events$$, 'événements Stripe invisibles depuis l''app');
 select pg_temp.logout();
+
+-- ---------------------------------------------------------------------
+\echo '16. Super-admin'
+select pg_temp.login('swann@admin.fr');
+select pg_temp.ok((select count(*) = 3 and bool_and(owner_email is not null) from public.admin_companies_overview()), 'vue d''ensemble : 3 entreprises et leurs propriétaires');
+select pg_temp.ok((select plan = 'pro' and plan_price_cents = 9900 and ai_limit = 1000 and leads_total = 1 and last_activity_at is not null
+                   from public.admin_companies_overview() where name = 'Plomberie Martin'), 'détail : offre, quota, prospects, activité');
+select pg_temp.ok((select (s ->> 'companies')::int = 3 and jsonb_array_length(s -> 'signups_by_month') = 6 and s ? 'mrr_by_plan'
+                   from public.admin_platform_stats() s), 'statistiques plateforme');
+do $$ begin perform public.admin_extend_trial((select id from public.companies where name = 'Bob Électricité'), 7); end $$;
+select pg_temp.ok((select trial_ends_at > now() + interval '20 days' from public.subscriptions s join public.companies c on c.id = s.company_id
+                   where c.name = 'Bob Électricité'), 'essai prolongé de 7 jours');
+select pg_temp.fails($$select public.admin_extend_trial((select id from public.companies where name = 'Bob Électricité'), 365)$$, 'durée de prolongation bornée');
+select pg_temp.logout();
+select pg_temp.login('alice@exemple.fr');
+select pg_temp.fails($$select public.admin_extend_trial(current_setting('test.alice_company')::uuid, 30)$$, 'un client ne prolonge pas son propre essai');
+select pg_temp.fails($$select public.admin_platform_stats()$$, 'statistiques plateforme réservées');
+select pg_temp.logout();

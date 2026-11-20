@@ -20,6 +20,7 @@ import PublicChatPage from './pages/public/PublicChatPage'
 import AssistantPage from './pages/app/assistant/AssistantPage'
 import InboxPage from './pages/app/inbox/InboxPage'
 import BillingPage from './pages/app/BillingPage'
+import AdminPage from './pages/app/AdminPage'
 import PricingPage from './pages/public/PricingPage'
 import { isSupabaseConfigured } from './lib/supabase'
 
@@ -79,7 +80,7 @@ export default function App() {
                 <Route key={path} path={path} element={<ComingSoonPage title={title} step={step} />} />
               ))}
               <Route element={<RequirePlatformAdmin />}>
-                <Route path="/admin" element={<ComingSoonPage title="Super-admin" step="7 · Tableau de bord et admin" />} />
+                <Route path="/admin" element={<AdminPage />} />
               </Route>
             </Route>
           </Route>
