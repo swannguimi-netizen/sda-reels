@@ -44,7 +44,7 @@ for (const plan of PLANS) {
     currency: 'eur',
     unit_amount: plan.amount,
     recurring: { interval: 'month' },
-    tax_behavior: 'exclusive', // prix HT
+    tax_behavior: 'inclusive', // prix TTC : la TVA est comprise dans le montant
     lookup_key: lookupKey,
     transfer_lookup_key: true,
     metadata: { plan_id: plan.id },

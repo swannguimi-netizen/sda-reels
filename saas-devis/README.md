@@ -112,7 +112,7 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 
 ## Abonnements
 
-| Offre | Prix HT/mois | Utilisateurs | Messages IA | Fonctionnalités ajoutées |
+| Offre | Prix TTC/mois | Utilisateurs | Messages IA | Fonctionnalités ajoutées |
 |---|---|---|---|---|
 | Starter | 70 € | 1 | 200 | devis, factures, IA, assistant, boîte de réception |
 | Pro | 99 € | 3 | 1 000 | signature électronique, relances automatiques |

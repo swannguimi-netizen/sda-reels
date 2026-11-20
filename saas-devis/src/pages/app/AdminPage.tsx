@@ -111,7 +111,7 @@ export default function AdminPage() {
   function exportCsv() {
     const cols: Array<[string, (r: Row) => string | number]> = [
       ['Entreprise', (r) => r.name], ['SIRET', (r) => r.siret ?? ''], ['Ville', (r) => r.city ?? ''], ['Email', (r) => r.owner_email ?? ''],
-      ['Statut', (r) => SEGMENT_LABEL[segmentOf(r)].label], ['Offre', (r) => r.plan], ['Prix HT', (r) => r.plan_price_cents / 100],
+      ['Statut', (r) => SEGMENT_LABEL[segmentOf(r)].label], ['Offre', (r) => r.plan], ['Prix TTC', (r) => r.plan_price_cents / 100],
       ['Fin d’essai', (r) => r.trial_ends_at?.slice(0, 10) ?? ''], ['Utilisateurs', (r) => r.members],
       ['Messages IA (mois)', (r) => r.ai_used_this_month], ['Devis (total)', (r) => r.quotes_total],
       ['CA signé HT', (r) => Number(r.signed_revenue_ht)], ['Assistant installé', (r) => (r.widget_active ? 'oui' : 'non')],
@@ -142,7 +142,7 @@ export default function AdminPage() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <section className="card p-5">
-          <p className="text-sm text-slate-500">Revenu mensuel récurrent (HT)</p>
+          <p className="text-sm text-slate-500">Revenu mensuel récurrent (TTC)</p>
           <p className="mt-1 text-5xl font-semibold tracking-tight text-slate-900">{euros(stats.mrr_cents)}</p>
           <p className="mt-1 text-sm text-slate-500">soit {euros(stats.mrr_cents * 12)} par an · {stats.active} client{stats.active > 1 ? 's' : ''} payant{stats.active > 1 ? 's' : ''}</p>
           <dl className="mt-5 space-y-2">

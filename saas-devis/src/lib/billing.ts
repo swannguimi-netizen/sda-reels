@@ -31,8 +31,8 @@ export interface Usage {
   online_signature: boolean
 }
 
-/** Mention affichée à côté des prix (les prix Stripe sont créés hors taxes). */
-export const PRICE_SUFFIX = 'HT / mois'
+/** Mention affichée à côté des prix d'abonnement (prix TTC, TVA incluse dans le prix Stripe). */
+export const PRICE_SUFFIX = 'TTC / mois'
 
 export const BASE_FEATURES = [
   'Devis et factures illimités',
