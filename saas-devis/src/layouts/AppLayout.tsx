@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
+import { daysLeft, useUsage } from '../lib/billing'
 import {
   BookOpen, Building2, CalendarDays, ChevronsUpDown, CreditCard, FileText, Inbox, LayoutDashboard,
   LogOut, Menu, Package, Receipt, Shield, Users, X,
@@ -173,7 +174,28 @@ function UserFooter() {
   )
 }
 
+/** Bandeau : fin d'essai proche, abonnement inactif ou paiement en échec. */
 function TrialBanner() {
-  // Branché sur current_usage() à l'étape « Stripe et abonnements »
-  return null
+  const { company } = useAuth()
+  const { usage } = useUsage(company?.id)
+  const location = useLocation()
+  if (!usage || location.pathname === '/abonnement') return null
+  const left = daysLeft(usage.trial_ends_at)
+  let tone = '', text = ''
+  if (!usage.active) {
+    tone = 'bg-red-600 text-white'
+    text = usage.status === 'trialing' ? 'Votre essai est terminé : vos données sont conservées, choisissez une offre pour continuer à créer des devis.' : 'Votre abonnement est inactif : la création de devis et l’assistant IA sont suspendus.'
+  } else if (usage.status === 'past_due' || usage.status === 'unpaid') {
+    tone = 'bg-red-600 text-white'
+    text = 'Le dernier paiement a échoué : mettez à jour votre carte pour éviter la suspension.'
+  } else if (usage.status === 'trialing' && !usage.has_stripe && left <= 7) {
+    tone = 'bg-amber-100 text-amber-900'
+    text = `Plus que ${left} jour${left > 1 ? 's' : ''} d’essai gratuit.`
+  } else return null
+  return (
+    <div className={`flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 py-2 text-center text-sm ${tone}`}>
+      <span>{text}</span>
+      <Link to="/abonnement" className="font-semibold underline underline-offset-2">Voir les offres</Link>
+    </div>
+  )
 }

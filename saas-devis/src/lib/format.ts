@@ -26,6 +26,9 @@ export function dbError(err: { message: string; code?: string } | null): string 
   if (err.code === '23503') return 'Cet élément est utilisé ailleurs (devis, facture…) et ne peut pas être supprimé.'
   if (err.code === '23505') return 'Cet élément existe déjà.'
   if (err.code === '23514') return 'Une valeur saisie est invalide.'
+  if (err.code === '42501' && /row-level security/.test(err.message) && /quotes|invoices/.test(err.message)) {
+    return 'Création impossible : votre essai est terminé ou votre abonnement est inactif (menu Abonnement).'
+  }
   if (err.code === '42501') return 'Vous n’avez pas les droits pour cette action.'
   return err.message
 }

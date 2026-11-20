@@ -19,11 +19,12 @@ import PublicDocumentPage from './pages/public/PublicDocumentPage'
 import PublicChatPage from './pages/public/PublicChatPage'
 import AssistantPage from './pages/app/assistant/AssistantPage'
 import InboxPage from './pages/app/inbox/InboxPage'
+import BillingPage from './pages/app/BillingPage'
+import PricingPage from './pages/public/PricingPage'
 import { isSupabaseConfigured } from './lib/supabase'
 
 const UPCOMING: Array<[string, string, string]> = [
   ['/rendez-vous', 'Rendez-vous', 'Fonctionnalités avancées'],
-  ['/abonnement', 'Abonnement', '6 · Stripe et abonnements'],
 ]
 
 export default function App() {
@@ -56,6 +57,7 @@ export default function App() {
           <Route path="/d/:token" element={<PublicDocumentPage type="quote" />} />
           <Route path="/f/:token" element={<PublicDocumentPage type="invoice" />} />
           <Route path="/chat/:key" element={<PublicChatPage />} />
+          <Route path="/tarifs" element={<PricingPage />} />
           <Route element={<RequireSession />}>
             <Route path="/bienvenue" element={<OnboardingPage />} />
           </Route>
@@ -72,6 +74,7 @@ export default function App() {
               <Route path="/assistant" element={<AssistantPage />} />
               <Route path="/connaissances" element={<Navigate to="/assistant" replace />} />
               <Route path="/boite-de-reception" element={<InboxPage />} />
+              <Route path="/abonnement" element={<BillingPage />} />
               {UPCOMING.map(([path, title, step]) => (
                 <Route key={path} path={path} element={<ComingSoonPage title={title} step={step} />} />
               ))}

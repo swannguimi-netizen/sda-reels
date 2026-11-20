@@ -13,7 +13,7 @@ SaaS multi-tenant pour TPE/PME, artisans et freelances : devis et factures confo
 | 3 | Devis + PDF (envoi, signature, facture) | ✅ (envoi email : à brancher sur Resend) |
 | 4 | Génération IA des devis | ✅ (clé API Claude à brancher) |
 | 5 | Assistant IA et widget | ✅ (clé API Claude à brancher) |
-| 6 | Stripe et abonnements | ⏳ (schéma prêt) |
+| 6 | Stripe et abonnements | ✅ (clés Stripe à brancher) |
 | 7 | Tableau de bord et admin | ⏳ (fonctions SQL prêtes) |
 | + | Relances, acompte, rendez-vous, avis Google, mobile Expo | ⏳ (tables prêtes) |
 
@@ -42,6 +42,12 @@ supabase functions deploy send-document
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-xxx   # CLAUDE_MODEL facultatif (défaut : claude-opus-5-5)
 supabase functions deploy generate-quote
 supabase functions deploy widget-chat --no-verify-jwt   # API publique du widget
+
+# Stripe : produits, prix (lookup_key) et portail client, puis fonctions
+STRIPE_SECRET_KEY=sk_test_xxx deno run -A supabase/functions/_scripts/stripe-setup.ts
+supabase secrets set STRIPE_SECRET_KEY=sk_test_xxx STRIPE_WEBHOOK_SECRET=whsec_xxx   # STRIPE_AUTOMATIC_TAX=true si Stripe Tax est activé
+supabase functions deploy billing
+supabase functions deploy stripe-webhook --no-verify-jwt   # Stripe → Webhooks : checkout.session.completed, customer.subscription.*
 ```
 
 `EMAIL_FROM` doit appartenir à un domaine vérifié dans Resend. Sans cette configuration, l'application
@@ -64,6 +70,7 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 | `…05_documents_editor.sql` | enregistrement atomique des lignes, duplication, facture publique, expiration, utilitaires des Edge Functions |
 | `…06_ai.sql` | journal des générations IA |
 | `…07_assistant.sql` | demandes de devis de l'assistant, conversion prospect → client, statut du prospect piloté par les devis |
+| `…08_billing.sql` | 4 offres, fonctionnalités par offre, blocage si abonnement inactif, événements Stripe |
 | `…04_dashboard_admin_storage.sql` | `dashboard_stats()`, `current_usage()`, vues super-admin, buckets `logos` / `documents` |
 
 ### Principes de sécurité
@@ -102,9 +109,25 @@ Super-admin : après inscription, exécuter dans l'éditeur SQL
 - **Boîte de réception** en temps réel : filtres (non lues, à traiter, demandes de devis, archivées), reprise en main / retour à l'assistant, réponse manuelle, fiche contact modifiable, compteur de non-lus dans le menu.
 - **Du message au devis** : « Créer le devis » convertit le prospect en client et ouvre un devis dont le panneau IA est pré-rempli avec le besoin exprimé dans la conversation ; le statut du prospect suit ensuite le devis (devis envoyé → gagné / perdu).
 
+## Abonnements
+
+| Offre | Prix HT/mois | Utilisateurs | Messages IA | Fonctionnalités ajoutées |
+|---|---|---|---|---|
+| Starter | 70 € | 1 | 200 | devis, factures, IA, assistant, boîte de réception |
+| Pro | 99 € | 3 | 1 000 | signature électronique, relances automatiques |
+| Business | 119 € | 5 | 2 000 | acompte payé en ligne |
+| Premium | 149 € | 10 | 5 000 | rendez-vous Google Agenda, avis Google |
+
+- Essai de 14 jours **sur Premium**, sans carte. S'abonner pendant l'essai conserve les jours restants (premier prélèvement à la fin de l'essai).
+- Offres et limites dans la table `plans` (fonctionnalités dans `plans.features`, testées par `private.plan_has_feature()`) ; prix Stripe retrouvés par `lookup_key` (`plan_<id>_monthly`) : aucun identifiant à recopier.
+- **Essai terminé ou abonnement inactif** : données consultables, mais plus de création de devis/factures (RLS), IA et envoi d'emails suspendus, bandeau d'alerte.
+- `billing` : Stripe Checkout (TVA intracom., adresse, codes promo) et portail client (carte, factures, changement d'offre au prorata, résiliation en fin de période).
+- `stripe-webhook` : signature vérifiée, idempotence (`stripe_events`), synchronisation de l'offre et du statut.
+- Page publique `/tarifs`.
+
 ### Tests
 
-104 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
+115 vérifications (isolation, calculs, signature, facturation, quotas, stockage) sur un Postgres local avec un bouchon Supabase :
 
 ```bash
 npm run test:db     # PGHOST / PGPORT / PGUSER configurables

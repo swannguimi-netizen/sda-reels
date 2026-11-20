@@ -48,8 +48,8 @@ select pg_temp.login('alice@exemple.fr');
 select pg_temp.ok((select name = 'Plomberie Martin' from public.create_company('Plomberie Martin', 'assujetti', '123 456 789 00012')),
   'Alice crée son entreprise');
 select pg_temp.ok((select role = 'owner' from public.company_members), 'Alice est propriétaire');
-select pg_temp.ok((select status = 'trialing' and plan_id = 'pro' and trial_ends_at > now() + interval '13 days'
-                   from public.subscriptions), 'essai Pro de 14 jours démarré');
+select pg_temp.ok((select status = 'trialing' and plan_id = 'premium' and trial_ends_at > now() + interval '13 days'
+                   from public.subscriptions), 'essai Premium de 14 jours démarré');
 select pg_temp.ok((select current_company_id is not null from public.profiles where email = 'alice@exemple.fr'),
   'entreprise courante définie');
 select pg_temp.ok((select count(*) = 10 from public.availability_rules), 'créneaux par défaut créés');
@@ -227,9 +227,9 @@ select pg_temp.fails($$select public.consume_ai_message(current_setting('test.al
   'quota IA non consommable depuis le navigateur');
 select pg_temp.logout();
 
--- Quota (service role) : Pro = 1 000 messages
+-- Quota (service role) : essai Premium = 5 000 messages
 select pg_temp.ok(public.consume_ai_message(current_setting('test.alice_company')::uuid), 'message IA décompté');
-update public.usage_counters set ai_messages = 1000;
+update public.usage_counters set ai_messages = 5000;
 select pg_temp.ok(not public.consume_ai_message(current_setting('test.alice_company')::uuid), 'quota atteint → refus');
 update public.subscriptions set trial_ends_at = now() - interval '1 day', plan_id = 'starter'
   where company_id = current_setting('test.alice_company')::uuid;
@@ -270,7 +270,7 @@ select pg_temp.ok((select (s ->> 'quotes_this_month')::int = 0 from public.dashb
 select pg_temp.logout();
 select pg_temp.login('swann@admin.fr');
 select pg_temp.ok((select count(*) = 2 from public.admin_companies_overview()), 'admin : toutes les entreprises listées');
-select pg_temp.ok((select (s ->> 'mrr_cents')::int = 2900 from public.admin_platform_stats() s), 'admin : MRR');
+select pg_temp.ok((select (s ->> 'mrr_cents')::int = 7000 from public.admin_platform_stats() s), 'admin : MRR');
 select pg_temp.logout();
 
 -- ---------------------------------------------------------------------
@@ -410,4 +410,46 @@ select pg_temp.ok((select status = 'won' from public.leads where id = current_se
 select pg_temp.logout();
 select pg_temp.login('bob@exemple.gf');
 select pg_temp.fails($$select public.convert_lead_to_client(current_setting('test.lead')::uuid)$$, 'Bob ne convertit pas les prospects d''Alice');
+select pg_temp.logout();
+
+-- ---------------------------------------------------------------------
+\echo '15. Offres et abonnements'
+select pg_temp.ok((select string_agg(id || ':' || price_cents, ',' order by sort_order) = 'starter:7000,pro:9900,business:11900,premium:14900'
+                   from public.plans), '4 offres de 70 à 149 €');
+insert into auth.users (email) values ('nouveau@exemple.fr');
+select pg_temp.login('nouveau@exemple.fr');
+do $$ begin perform set_config('test.new_company', (select id::text from public.create_company('Nouvelle SARL')), false); end $$;
+select pg_temp.ok((select plan_id = 'premium' and status = 'trialing' from public.subscriptions), 'essai de 14 jours sur Premium');
+select pg_temp.ok(public.company_has_feature(current_setting('test.new_company')::uuid, 'appointments'), 'essai : toutes les fonctionnalités');
+select pg_temp.ok((select (u ->> 'features')::jsonb ? 'review_requests' and (u ->> 'price_cents')::int = 14900
+                   from public.current_usage(current_setting('test.new_company')::uuid) u), 'usage : offre, prix et fonctionnalités');
+select pg_temp.logout();
+-- Fin d'essai : plus de création de devis, lecture conservée
+update public.subscriptions set trial_ends_at = now() - interval '1 hour' where company_id = current_setting('test.new_company')::uuid;
+select pg_temp.login('nouveau@exemple.fr');
+select pg_temp.fails($$insert into public.quotes (company_id) values (current_setting('test.new_company')::uuid)$$,
+  'essai terminé : création de devis bloquée');
+select pg_temp.ok(not public.company_has_feature(current_setting('test.new_company')::uuid, 'online_signature'), 'essai terminé : fonctionnalités coupées');
+select pg_temp.logout();
+-- Abonnement Starter : pas de signature en ligne
+update public.subscriptions set status = 'active', plan_id = 'starter' where company_id = current_setting('test.new_company')::uuid;
+select pg_temp.login('nouveau@exemple.fr');
+insert into public.quotes (company_id, title) values (current_setting('test.new_company')::uuid, 'Starter');
+select pg_temp.ok((select count(*) = 1 from public.quotes), 'abonnement actif : création de devis');
+update public.quotes set status = 'sent';
+do $$ begin perform set_config('test.starter_token', (select public_token::text from public.quotes limit 1), false); end $$;
+select pg_temp.logout();
+set role anon;
+select pg_temp.ok((select (public.get_public_quote(current_setting('test.starter_token')::uuid) ->> 'online_signature')::boolean = false),
+  'Starter : la page publique n''offre pas la signature');
+select pg_temp.fails($$select public.sign_quote(current_setting('test.starter_token')::uuid, 'Client', 'data:image/png;base64,AA')$$,
+  'Starter : signature en ligne refusée');
+reset role;
+update public.subscriptions set plan_id = 'pro' where company_id = current_setting('test.new_company')::uuid;
+set role anon;
+select pg_temp.ok((select (public.get_public_quote(current_setting('test.starter_token')::uuid) ->> 'online_signature')::boolean),
+  'Pro : signature en ligne disponible');
+reset role;
+select pg_temp.login('nouveau@exemple.fr');
+select pg_temp.fails($$select * from public.stripe_events$$, 'événements Stripe invisibles depuis l''app');
 select pg_temp.logout();

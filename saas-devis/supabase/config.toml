@@ -8,3 +8,10 @@ verify_jwt = true
 # API publique du widget : pas de JWT, la clé publique du widget identifie l'entreprise
 [functions.widget-chat]
 verify_jwt = false
+
+[functions.billing]
+verify_jwt = true
+
+# Appelé par Stripe : authentifié par la signature du webhook
+[functions.stripe-webhook]
+verify_jwt = false

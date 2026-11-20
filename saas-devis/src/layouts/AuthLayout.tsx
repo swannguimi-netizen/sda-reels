@@ -28,7 +28,7 @@ export function AuthLayout({ title, subtitle, children }: { title: string; subti
             ))}
           </ul>
         </div>
-        <p className="text-sm text-brand-100">14 jours d’essai gratuit · sans carte bancaire</p>
+        <p className="text-sm text-brand-100">14 jours d’essai gratuit · sans carte bancaire · <Link to="/tarifs" className="underline">voir les tarifs</Link></p>
       </aside>
 
       <main className="flex items-center justify-center bg-slate-50 px-4 py-12 sm:px-8">
