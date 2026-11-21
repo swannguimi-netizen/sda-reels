@@ -1,7 +1,8 @@
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CalendarPlus, Check, Download, Mail, Shield } from 'lucide-react'
+import { AlertTriangle, CalendarPlus, Check, CreditCard, Download, Mail, Shield } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { invokeFunction } from '../../lib/functions'
 import { useToast } from '../../components/Toast'
 import { RowMenu } from '../../components/RowMenu'
 import { PageHeader, SearchInput, Spinner } from '../../components/ui'
@@ -93,6 +94,19 @@ export default function AdminPage() {
 
   useEffect(() => { load() }, [load])
 
+  const [stripeBusy, setStripeBusy] = useState(false)
+  async function setupStripe() {
+    setStripeBusy(true)
+    try {
+      const r = await invokeFunction<{ log: string[]; mode: 'test' | 'live' }>('billing', { action: 'setup' }, 'Configuration Stripe impossible.')
+      toast('success', `Stripe configuré (${r.mode === 'live' ? 'production' : 'mode test'}) : 4 offres et portail client.`)
+    } catch (e) {
+      toast('error', (e as Error).message)
+    } finally {
+      setStripeBusy(false)
+    }
+  }
+
   const isEnding = (r: Row) => segmentOf(r) === 'trial' && daysLeft(r.trial_ends_at) <= 7
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -138,7 +152,13 @@ export default function AdminPage() {
   return (
     <>
       <PageHeader title="Super-admin" description="Toutes les entreprises de la plateforme, leurs abonnements et leur usage."
-        actions={<span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700"><Shield className="h-4 w-4" />Accès plateforme</span>} />
+        actions={<>
+          <button className="btn-secondary" onClick={setupStripe} disabled={stripeBusy}
+            title="Crée ou met à jour les 4 offres et leurs prix dans Stripe, et configure le portail client">
+            {stripeBusy ? <Spinner className="h-4 w-4" /> : <CreditCard className="h-4 w-4" />}Configurer Stripe
+          </button>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700"><Shield className="h-4 w-4" />Accès plateforme</span>
+        </>} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <section className="card p-5">

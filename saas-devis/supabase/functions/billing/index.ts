@@ -3,6 +3,7 @@
 import { corsHeaders, json } from '../_shared/cors.ts'
 import { adminClient, userClient } from '../_shared/supabase.ts'
 import { priceLookupKey, Stripe, stripe } from '../_shared/stripe.ts'
+import { setupStripe } from '../_shared/stripe-plans.ts'
 
 const APP_URL = (Deno.env.get('APP_URL') ?? '').replace(/\/$/, '')
 const LIVE_STATUSES = ['active', 'trialing', 'past_due', 'unpaid', 'incomplete']
@@ -13,12 +14,21 @@ Deno.serve(async (req) => {
 
   try {
     const { action, company_id: companyId, plan_id: planId } = await req.json()
-    if (typeof companyId !== 'string') return json({ error: 'Entreprise manquante' }, 400)
-
-    // Droits : propriétaire ou administrateur de l'entreprise
     const user = userClient(req)
     const { data: auth } = await user.auth.getUser()
     if (!auth?.user) return json({ error: 'Authentification requise' }, 401)
+
+    // Super-admin : création des produits et prix Stripe des offres + portail client
+    if (action === 'setup') {
+      const { data: isAdmin } = await adminClient().from('profiles').select('is_platform_admin').eq('id', auth.user.id).single()
+      if (!isAdmin?.is_platform_admin) return json({ error: 'Réservé à l’administrateur de la plateforme.' }, 403)
+      const log = await setupStripe(stripe(), APP_URL || req.headers.get('origin'))
+      return json({ ok: true, log, mode: Deno.env.get('STRIPE_SECRET_KEY')?.startsWith('sk_live') ? 'live' : 'test' })
+    }
+
+    if (typeof companyId !== 'string') return json({ error: 'Entreprise manquante' }, 400)
+
+    // Droits : propriétaire ou administrateur de l'entreprise
     const { data: member } = await user.from('company_members').select('role')
       .eq('company_id', companyId).eq('user_id', auth.user.id).single()
     if (!member || !['owner', 'admin'].includes(member.role)) {
@@ -70,7 +80,7 @@ Deno.serve(async (req) => {
 
     const prices = await s.prices.list({ lookup_keys: [priceLookupKey(plan.id)], active: true, limit: 1 })
     const price = prices.data[0]
-    if (!price) return json({ error: `Prix Stripe introuvable pour l’offre ${plan.name} (lancez le script stripe-setup).` }, 500)
+    if (!price) return json({ error: `Prix Stripe introuvable pour l’offre ${plan.name} (Super-admin → « Configurer Stripe »).` }, 500)
 
     // Les jours d'essai restants sont conservés : le premier prélèvement a lieu à la fin de l'essai
     const trialEnd = sub.status === 'trialing' && sub.trial_ends_at ? Math.floor(new Date(sub.trial_ends_at).getTime() / 1000) : null
